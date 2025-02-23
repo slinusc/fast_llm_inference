@@ -1,0 +1,11 @@
+accelerate==0.28.0
+bitsandbytes==0.43.0
+sentencepiece==0.2.0
+protobuf==4.25.2
+numpy==1.26.4
+scipy==1.12.0
+tqdm==4.66.1
+psutil==5.9.8
+huggingface_hub==0.20.3
+uvicorn==0.27.1
+fastapi==0.109.2
