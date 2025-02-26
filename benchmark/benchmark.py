@@ -85,8 +85,8 @@ class ModelBenchmark:
         end_time = time.time()
 
         total_time = end_time - start_time
-        generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-        num_tokens = len(self.tokenizer(generated_text).input_ids)
+        generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True) 
+        num_tokens = len(self.tokenizer(generated_text).input_ids) # Count the number of tokens in the generated text
 
         FTL = total_time / num_tokens if num_tokens > 0 else total_time
         ATL = (total_time - FTL) / (num_tokens - 1) if num_tokens > 1 else 0

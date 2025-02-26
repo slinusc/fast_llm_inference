@@ -170,4 +170,5 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
-llama3-8B/power_log.csv
+inference/
+
