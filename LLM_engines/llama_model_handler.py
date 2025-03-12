@@ -107,10 +107,10 @@ class LlamaModelHandler:
             pad_token_id=self.tokenizer.eos_token_id,
             early_stopping=True,
             no_repeat_ngram_size=3,           # Avoid repeating 3-grams
-            repetition_penalty=1.2,           # Penalize repetitive phrases
+            repetition_penalty=1.1,           # Penalize repetitive phrases
             temperature=0.7,                  # Controls randomness (lower = more focused)
             top_p=0.9,                        # Nucleus sampling for coherent responses
-            do_sample=True,                   # Enable sampling for diversity
+            do_sample=True                   # Enable sampling for diversity
         )
         return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
 
