@@ -172,3 +172,11 @@ cython_debug/
 
 inference/
 
+llama.cpp/
+
+Loading_your_LLM.ipynb
+
+llama-3.1-8B-Instruct-gguf/
+llama-3.1-8B-Instruct/
+llama-3.1-8B-gguf/
+llama-3.1-8B/
