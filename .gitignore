@@ -181,4 +181,4 @@ llama-3.1-8B-Instruct/
 llama-3.1-8B-gguf/
 llama-3.1-8B/
 
-results_cpp/
+llama_cpp_results/
