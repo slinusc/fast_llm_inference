@@ -14,6 +14,11 @@ import json
 import numpy as np
 import math
 from llama_cpp import Llama
+import evaluate
+import re
+import string
+from sqlglot import parse_one, errors as sqlglot_errors
+import torch
 
 
 class ModelBenchmark:
@@ -23,8 +28,9 @@ class ModelBenchmark:
         tokenizer=None,
         max_tokens: int = 256,
         backend="huggingface",
+        task="summarization",
         llama_model_path=None,
-        llama_gpu_layers=35,
+        llama_gpu_layers=-1,
         model_size="N/A",
         verbose=False
     ):
@@ -42,6 +48,7 @@ class ModelBenchmark:
         self.tokenizer = tokenizer
         self.max_tokens = max_tokens
         self.backend = backend
+        self.task = task
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model_size = model_size
         self.verbose = verbose
@@ -54,13 +61,16 @@ class ModelBenchmark:
                 print(f"Loading llama.cpp model from {llama_model_path} ...")
             self.llm = Llama(
                 model_path=llama_model_path,
-                n_ctx=4096,
+                n_ctx=2048,
                 n_gpu_layers=llama_gpu_layers,
-                logits_all=True,
                 verbose=False
             )
         else:
             self.llm = None
+
+        if self.task == "summarization":
+            self.rouge = evaluate.load("rouge")
+            self.bertscore = evaluate.load("bertscore")
 
         # GPU power/memory tracking
         if torch.cuda.is_available():
@@ -144,14 +154,10 @@ class ModelBenchmark:
         except Exception:
             model_size = "N/A"
 
-        kv_cache_estimation = (
-            mem_usage - model_size if isinstance(model_size, float) else "N/A"
-        )
 
         return {
             "Memory Usage (MB)": mem_usage,
-            "Model Size (MB)": model_size,
-            "KV-Cache Size Estimation (MB)": kv_cache_estimation
+            "Model Size (MB)": model_size
         }
 
     def measure_energy(self, num_tokens, num_sentences, generation_time):
@@ -174,68 +180,152 @@ class ModelBenchmark:
         }
 
 
-    def _compute_perplexity(self, text):
+    @staticmethod
+    def normalize_answer(s):
+        """Lowercase, remove punctuation, articles, and normalize whitespace."""
+        s = s.lower()
+        s = re.sub(r'\b(a|an|the)\b', ' ', s)  # remove articles
+        s = s.translate(str.maketrans('', '', string.punctuation))  # remove punctuation
+        s = re.sub(r'\s+', ' ', s)  # collapse multiple spaces
+        return s.strip()
+
+
+    def clean_prediction(self, prediction):
         """
-        Compute perplexity for a given text.
-        Perplexity (PPL) = exp(-mean log probability)
-        
-        Works for Hugging Face and llama.cpp models.
+        Cleans the raw prediction output from llama.cpp.
+        - Truncates at a new line, 'Context:', or other stop signals.
+        - Normalizes the prediction.
         """
-        if self.backend == "huggingface":
-            inputs = self.tokenizer(text, return_tensors="pt").to(self.device)
-            with torch.no_grad():
-                outputs = self.model(**inputs, labels=inputs["input_ids"])
-            loss = outputs.loss.item()
-            ppl = math.exp(loss)
-            return round(ppl, 4)
+        # Split on common stop sequences
+        stop_tokens = ["\n\n", "\nContext:", "Context:", "\nQuestion:", "SQL:", "\nSQL", "\nAnswer:", "Answer:"]
+        for stop in stop_tokens:
+            if stop in prediction:
+                prediction = prediction.split(stop)[0]
 
-        elif self.backend == "llama.cpp":
-            response = self.llm(
-                prompt=text,
-                max_tokens=0,  # No generation, just evaluate log probabilities
-                logprobs=True  # Get logprobs
-                
-            )
+        return prediction
 
-            # Extract log probabilities
-            logprobs = response["choices"][0].get("logprobs", {}).get("token_logprobs", None)
 
-            if logprobs is None or len(logprobs) == 0:
-                print(f"Warning: No logprobs returned for text: {text}")
-                return float('inf')  # Can't compute PPL
+    def compute_exact_match(self, prediction, ground_truths):
+        """Exact match: 1 if prediction is in ground_truths, else 0."""
+        prediction = self.normalize_answer(self.clean_prediction(prediction))
+        ground_truths = [self.normalize_answer(gt) for gt in ground_truths]
 
-            # Compute perplexity
-            avg_neg_logprob = -sum(logprobs) / len(logprobs)
-            ppl = math.exp(avg_neg_logprob)
-            return round(ppl, 4)
+        return int(prediction in ground_truths)
+
+
+    def compute_f1(self, prediction, ground_truths):
+        """Compute the maximum F1 over all ground truths."""
+        def get_tokens(s):
+            return self.normalize_answer(s).split()
+
+        pred_tokens = get_tokens(prediction)
+        if not pred_tokens:
+            return int(not any(get_tokens(gt) for gt in ground_truths))
+
+        scores = []
+        for gt in ground_truths:
+            gt_tokens = get_tokens(gt)
+            common = set(pred_tokens) & set(gt_tokens)
+            num_same = len(common)
+
+            if num_same == 0:
+                scores.append(0)
+                continue
+
+            precision = num_same / len(pred_tokens)
+            recall = num_same / len(gt_tokens)
+            f1 = 2 * precision * recall / (precision + recall)
+            scores.append(f1)
+
+        return max(scores)
+
+
+    def normalized_equal(self, sql1: str, sql2: str) -> int:
+        """
+        Compare two SQL strings after normalization (ignores case/spacing).
+        """
+        return int(self.normalize_answer(sql1) == self.normalize_answer(sql2))
+
+    @staticmethod
+    def ast_equal(sql1: str, sql2: str) -> int:
+        """
+        Compare two SQL statements by parsing them into ASTs.
+        Returns True if their structure and logic are equal.
+        """
+        try:
+            tree1 = parse_one(sql1.lower()) # lower, since the reference is lower, even though the columns and tables are not
+            tree2 = parse_one(sql2.lower())
+            return int(tree1 == tree2)
+        except sqlglot_errors.ParseError as e:
+            print(f"[AST Parse Error] {e}")
+            return int(False)
+    
+
+    def _quality_metrics(self, generated: str, reference: str) -> dict:
+        """
+        Compute evaluation metrics for a single prediction-reference pair based on task type.
+
+        Args:
+            generated (str): The generated answer.
+            reference (str or list): The ground truth answer(s).
+            task (str): Task type, one of ['summarization', 'qa', 'sql'].
+
+        Returns:
+            dict: Dictionary of evaluation metric scores.
+        """
+        if self.task == "summarization":
+
+            generated = generated.strip().split('\n')[0]
+            rouge1 = self.rouge.compute(predictions=[generated], references=[reference], use_stemmer=True)["rouge1"]
+            rougeL = self.rouge.compute(predictions=[generated], references=[reference], use_stemmer=True)["rougeL"]
+            bert = self.bertscore.compute(predictions=[generated], references=[reference], lang="en")["f1"][0]
+            return {
+                "ROUGE-1": rouge1,
+                "ROUGE-L": rougeL,
+                "ROUGE_avg": (rouge1 + rougeL) / 2,
+                "BERTScore": bert
+            }
+
+        elif self.task == "qa":
+
+            generated = self.clean_prediction(generated)
+            ref_list = reference if isinstance(reference, list) else [reference]
+
+            em = self.compute_exact_match(generated, ref_list)
+            f1 = self.compute_f1(generated, ref_list)
+
+            return {
+                "exact_match": em,
+                "F1_score": f1
+            }
+
+        elif self.task == "sql":
+
+            ast = self.ast_equal(generated, reference)
+            normalized_equ = self.normalized_equal(generated, reference)
+
+            return {
+                "AST_equal": ast,
+                "Normalized_equal": normalized_equ
+            }
 
         else:
-            raise ValueError("Perplexity computation not supported for this backend")
+            raise ValueError(f"Unsupported task type: {self.task}")
 
 
-
-
-    def benchmark(self, prompts):
-        """
-        Run benchmarking on a list of prompts.
-        Measures latency, throughput, memory, energy, perplexity for prompt and generation.
-        
-        Args:
-            prompts (List[str]): List of input prompts.
-        
-        Returns:
-            pd.DataFrame: Benchmark results for each prompt.
-        """
+    def benchmark(self, prompts, references):
         results = []
 
-        for prompt in prompts:
+        for i, prompt in enumerate(prompts):
             if self.verbose:
                 print(f"\nEvaluating prompt ({len(prompt)} characters)...")
 
             # Step 1: Generate text and measure generation time
             generated_text, generation_time = self.generate_once(prompt)
 
-            # Step 2: Count tokens and sentences in generation
+            generated_text = self.clean_prediction(generated_text)
+
+            # Step 2: Count tokens and sentences
             if self.backend == "huggingface":
                 num_tokens = len(self.tokenizer(generated_text).input_ids)
             elif self.backend in ["vllm", "llama.cpp"]:
@@ -247,15 +337,12 @@ class ModelBenchmark:
 
             # Step 3: Latency metrics
             FTL = generation_time / num_tokens if num_tokens > 0 else generation_time
-            ATL = (
-                (generation_time - FTL) / (num_tokens - 1)
-                if num_tokens > 1 else 0
-            )
+            ATL = (generation_time - FTL) / (num_tokens - 1) if num_tokens > 1 else 0
 
             latency = {
-                "FTL (s)": round(FTL, 4),
-                "ATL (s)": round(ATL, 4),
-                "GL (s)": round(generation_time, 4)
+                # "FTL": round(FTL, 4),
+                "ATL": round(ATL, 4),
+                "GL": round(generation_time, 4)
             }
 
             # Step 4: Throughput
@@ -263,36 +350,48 @@ class ModelBenchmark:
             SPS = num_sentences / generation_time if generation_time > 0 else 0
 
             throughput = {
-                "TPS (tokens/s)": round(TPS, 2),
-                "SPS (sentences/s)": round(SPS, 2)
+                "TPS": round(TPS, 2),
+                "SPS": round(SPS, 2)
             }
 
             # Step 5: Storage & energy
             storage = self.measure_storage()
             energy = self.measure_energy(num_tokens, num_sentences, generation_time)
 
-            # Step 6: Perplexity
-            #perplexity_prompt = self._compute_perplexity(prompt)
-            #perplexity_generation = self._compute_perplexity("generated_text")
+            # Step 6: Quality metrics
+            reference = references[i] if isinstance(references, list) else references
+            quality_metrics = self._quality_metrics(generated_text, reference)
 
             # Step 7: Collect results
             result = {
-                "Prompt Length": len(prompt),
-                "Question (Prompt)": prompt,
-                "Generated Answer": generated_text,
-                #"Perplexity (Prompt)": perplexity_prompt,
-                #"Perplexity (Generation)": perplexity_generation,
+                "prompt_length": len(prompt),
+                "prompt": prompt,
+                "generated_answer": generated_text,
+                "reference_answer": reference,
                 **latency,
                 **throughput,
                 **storage,
                 **energy
             }
 
+            if self.task == "sql":
+                result["AST_equal"] = quality_metrics["AST_equal"]
+                result["Normalized_equal"] = quality_metrics["Normalized_equal"]
+            elif self.task == "qa":
+                result["exact_match"] = quality_metrics["exact_match"]
+                result["F1_score"] = quality_metrics["F1_score"]
+            elif self.task == "summarization":
+                result["ROUGE-1"] = quality_metrics["ROUGE-1"]
+                result["ROUGE-L"] = quality_metrics["ROUGE-L"]
+                result["BERTScore"] = quality_metrics["BERTScore"]
+            else:
+                raise ValueError(f"Unsupported task type: {self.task}")
+
             results.append(result)
 
             if self.verbose:
                 print(f"\nResults for this prompt:\n{result}")
+            
+            torch.cuda.empty_cache()
 
-        # Return as dataframe
-        df = pd.DataFrame(results)
-        return df
+        return pd.DataFrame(results)
