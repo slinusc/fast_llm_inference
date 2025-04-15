@@ -14,6 +14,7 @@ import json
 import numpy as np
 import math
 from llama_cpp import Llama
+from vllm import LLM, SamplingParams
 import evaluate
 import re
 import string
@@ -29,7 +30,7 @@ class ModelBenchmark:
         max_tokens: int = 256,
         backend="huggingface",
         task="summarization",
-        llama_model_path=None,
+        model_path=None,
         llama_gpu_layers=-1,
         model_size="N/A",
         verbose=False
@@ -55,16 +56,22 @@ class ModelBenchmark:
 
         # llama.cpp initialization
         if self.backend == "llama.cpp":
-            if llama_model_path is None:
+            if model_path is None:
                 raise ValueError("You must provide llama_model_path for llama.cpp backend.")
             if self.verbose:
-                print(f"Loading llama.cpp model from {llama_model_path} ...")
+                print(f"Loading llama.cpp model from {model_path} ...")
             self.llm = Llama(
-                model_path=llama_model_path,
+                model_path=model_path,
                 n_ctx=2048,
                 n_gpu_layers=llama_gpu_layers,
                 verbose=False
             )
+        elif self.backend == "vllm":
+            if model_path is None:
+                raise ValueError("You must provide model_path for vLLM backend.")
+            if self.verbose:
+                print(f"Loading vLLM model from {model_path} ...")
+            self.llm = LLM(model=model_path)
         else:
             self.llm = None
 
@@ -111,8 +118,15 @@ class ModelBenchmark:
             generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
 
         elif self.backend == "vllm":
-            # Assuming self.model.generate returns the text (adjust if not)
-            generated_text = self.model.generate(prompt, max_tokens=self.max_tokens)
+            sampling_params = SamplingParams(
+                temperature=0.1,
+                top_p=0.9,
+                top_k=50,
+                max_tokens=256,
+                stop=["\n"]
+            )
+            outputs = self.llm.generate(prompt, sampling_params)
+            generated_text = outputs[0].outputs[0].text
 
         elif self.backend == "llama.cpp":
             response = self.llm(
