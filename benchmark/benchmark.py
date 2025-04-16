@@ -4,7 +4,8 @@ from pynvml import (
     nvmlDeviceGetHandleByIndex,
     nvmlDeviceGetMemoryInfo,
     nvmlDeviceGetPowerUsage,
-    nvmlShutdown
+    nvmlShutdown,
+    nvmlDeviceGetUtilizationRates,
 )
 import time
 import pandas as pd
@@ -25,14 +26,12 @@ import torch
 class ModelBenchmark:
     def __init__(
         self,
-        model=None,
         tokenizer=None,
         max_tokens: int = 256,
         backend="huggingface",
         task="summarization",
         model_path=None,
         llama_gpu_layers=-1,
-        model_size="N/A",
         verbose=False
     ):
         """
@@ -45,13 +44,12 @@ class ModelBenchmark:
         :param llama_model_path: GGUF model path (required if backend == llama.cpp)
         :param llama_gpu_layers: Number of layers to offload to GPU (llama.cpp only)
         """
-        self.model = model
+        self.model_size = self.get_model_size_mb(model_path) if model_path else 0
         self.tokenizer = tokenizer
         self.max_tokens = max_tokens
         self.backend = backend
         self.task = task
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.model_size = model_size
         self.verbose = verbose
 
         # llama.cpp initialization
@@ -62,7 +60,7 @@ class ModelBenchmark:
                 print(f"Loading llama.cpp model from {model_path} ...")
             self.llm = Llama(
                 model_path=model_path,
-                n_ctx=2048,
+                n_ctx=4096,
                 n_gpu_layers=llama_gpu_layers,
                 verbose=False
             )
@@ -75,16 +73,16 @@ class ModelBenchmark:
         else:
             self.llm = None
 
-        if self.task == "summarization":
-            self.rouge = evaluate.load("rouge")
-            self.bertscore = evaluate.load("bertscore")
-
         # GPU power/memory tracking
         if torch.cuda.is_available():
             nvmlInit()
             self.handle = nvmlDeviceGetHandleByIndex(0)
         else:
             self.handle = None
+
+        if self.task == "summarization":
+            self.rouge = evaluate.load("rouge")
+            self.bertscore = evaluate.load("bertscore")
 
     def _get_gpu_memory_usage(self):
         """Get GPU memory usage in MB."""
@@ -96,15 +94,120 @@ class ModelBenchmark:
     def _get_gpu_power_usage(self):
         """Get GPU power usage in Watts."""
         if self.device == "cuda" and self.handle:
-            return round(nvmlDeviceGetPowerUsage(self.handle) / 1000.0, 2)
+            info = nvmlDeviceGetPowerUsage(self.handle)
+            return round(info / 1000.0, 2)
         return 0
+
+    def _get_gpu_utilization(self):
+        """Get GPU utilization percentage."""
+        if self.device == "cuda" and self.handle:
+            info = nvmlDeviceGetUtilizationRates(self.handle)
+            return round(info.gpu, 2)
+
 
     def close(self):
         """Shutdown NVML (clean-up)."""
         if self.device == "cuda":
             nvmlShutdown()
 
-    def generate_once(self, prompt: str):
+    def measure_ttft(self):
+        """
+        Measure Time-To-First-Token (TTFT) for a single 50 tokens prompt.
+        Uses max_new_tokens=1 and times the full generation call.
+        
+        Returns:
+            dict with TTFT (s), and prompt token count.
+        """
+
+        prompt = "Artificial intelligence is a rapidly evolving field with " \
+        "applications in healthcare, finance, education, and more. One of the " \
+        "most transformative technologies is"
+
+        if self.backend == "vllm":
+
+            sampling_params = SamplingParams(temperature=0.0, max_tokens=1)
+
+            start = time.time()
+            _ = self.llm.generate(prompt, sampling_params)
+            end = time.time()
+
+        elif self.backend == "llama.cpp":
+            start = time.time()
+            _ = self.llm(prompt=prompt, temperature=0.0, max_tokens=1)
+            end = time.time()
+
+        else:
+            raise ValueError(f"Unsupported backend '{self.backend}'")
+
+        return end - start
+    
+
+    @staticmethod
+    def get_model_size_mb(path):
+        """
+        Calculate model size in MB. Requires the model path.
+        - If `path` is a GGUF file, return its size.
+        - If `path` is a directory, sum safetensors, json, tokenizer, etc.
+        """
+        if os.path.isfile(path) and path.endswith(".gguf"):
+            return os.path.getsize(path) / (1024 * 1024)
+
+        elif os.path.isdir(path):
+            extensions = (".safetensors", ".bin", ".json", ".txt", ".model", ".tokenizer")
+            total_size = 0
+            for dirpath, _, filenames in os.walk(path):
+                for f in filenames:
+                    if f.endswith(extensions):
+                        fp = os.path.join(dirpath, f)
+                        if os.path.exists(fp):
+                            total_size += os.path.getsize(fp)
+            return total_size / (1024 * 1024)
+
+        else:
+            raise ValueError("Path must be a .gguf file or a model directory.")
+
+
+    def measure_storage(self):
+        """Estimate memory + KV cache + model size for HuggingFace (optional for llama.cpp)."""
+        mem_usage = self._get_gpu_memory_usage()
+        model_size = self.model_size
+
+        return {
+            "Memory Usage (MB)": mem_usage,
+            "Model Size (MB)": model_size,
+            "Overhead (MB)": mem_usage - model_size if mem_usage > model_size else 0,
+        }
+
+    def measure_energy(self, num_tokens, num_sentences, generation_time):
+        """Compute energy consumption based on time/power."""
+        power_watts = self._get_gpu_power_usage()
+        total_energy_wh = (power_watts * generation_time) / 3600
+
+        energy_per_token = (
+            total_energy_wh * 3600 / num_tokens if num_tokens > 0 else 0
+        )
+        energy_per_sentence = (
+            total_energy_wh * 3600 / num_sentences if num_sentences > 0 else 0
+        )
+
+        return {
+            "Total Energy (Wh)": round(total_energy_wh, 6),
+            "Energy per Token (J/token)": round(energy_per_token, 6),
+            "Energy per Sentence (J/sentence)": round(energy_per_sentence, 6),
+            "Energy per Second (W)": round(power_watts, 6)
+        }
+
+    def measure_gpu_utilization(self):
+        """Measure GPU utilization percentage."""
+        if self.device == "cuda" and self.handle:
+            utilization = self._get_gpu_utilization()
+            return {
+                "GPU_Utilization (%)": utilization,
+            }
+        return {}
+
+
+    def generate_single(self, prompt: str):
         """Generates text and measures generation time."""
         start_time = time.time()
 
@@ -119,10 +222,10 @@ class ModelBenchmark:
 
         elif self.backend == "vllm":
             sampling_params = SamplingParams(
-                temperature=0.1,
+                temperature=0.0,
                 top_p=0.9,
                 top_k=50,
-                max_tokens=256,
+                max_tokens=self.max_tokens,
                 stop=["\n"]
             )
             outputs = self.llm.generate(prompt, sampling_params)
@@ -146,53 +249,7 @@ class ModelBenchmark:
         if self.verbose:
             print(f"\nPrompt:\n{prompt}\n\nAnswer:\n{generated_text}\n")
         return generated_text, generation_time
-
-    def measure_storage(self):
-        """Estimate memory + KV cache + model size for HuggingFace (optional for llama.cpp)."""
-        mem_usage = self._get_gpu_memory_usage()
-
-        try:
-            # HuggingFace model size (optional, if llama.cpp skip this)
-            if self.backend == "huggingface":
-                model_path = hf_hub_download(
-                    self.model.config._name_or_path,
-                    filename="config.json",
-                    repo_type="model"
-                )
-                model_dir = os.path.dirname(model_path)
-                model_size = sum(
-                    f.stat().st_size for f in os.scandir(model_dir) if f.is_file()
-                ) / (1024 ** 2)
-            else:
-                model_size = self.model_size
-        except Exception:
-            model_size = "N/A"
-
-
-        return {
-            "Memory Usage (MB)": mem_usage,
-            "Model Size (MB)": model_size
-        }
-
-    def measure_energy(self, num_tokens, num_sentences, generation_time):
-        """Compute energy consumption based on time/power."""
-        power_watts = self._get_gpu_power_usage()
-        total_energy_wh = (power_watts * generation_time) / 3600
-
-        energy_per_token = (
-            total_energy_wh * 3600 / num_tokens if num_tokens > 0 else 0
-        )
-        energy_per_sentence = (
-            total_energy_wh * 3600 / num_sentences if num_sentences > 0 else 0
-        )
-
-        return {
-            "Total Energy (Wh)": round(total_energy_wh, 6),
-            "Energy per Token (J/token)": round(energy_per_token, 6),
-            "Energy per Sentence (J/sentence)": round(energy_per_sentence, 6),
-            "Energy per Second (W)": round(power_watts, 6)
-        }
-
+    
 
     @staticmethod
     def normalize_answer(s):
@@ -327,6 +384,7 @@ class ModelBenchmark:
             raise ValueError(f"Unsupported task type: {self.task}")
 
 
+
     def benchmark(self, prompts, references):
         results = []
 
@@ -335,7 +393,7 @@ class ModelBenchmark:
                 print(f"\nEvaluating prompt ({len(prompt)} characters)...")
 
             # Step 1: Generate text and measure generation time
-            generated_text, generation_time = self.generate_once(prompt)
+            generated_text, generation_time = self.generate_single(prompt)
 
             generated_text = self.clean_prediction(generated_text)
 
@@ -350,11 +408,11 @@ class ModelBenchmark:
             num_sentences = generated_text.count('.') + 1
 
             # Step 3: Latency metrics
-            FTL = generation_time / num_tokens if num_tokens > 0 else generation_time
-            ATL = (generation_time - FTL) / (num_tokens - 1) if num_tokens > 1 else 0
+            TTFT = self.measure_ttft()
+            ATL = generation_time / (num_tokens - 1) if num_tokens > 1 else 0
 
             latency = {
-                # "FTL": round(FTL, 4),
+                "TTFT": round(TTFT, 4),
                 "ATL": round(ATL, 4),
                 "GL": round(generation_time, 4)
             }
@@ -370,6 +428,7 @@ class ModelBenchmark:
 
             # Step 5: Storage & energy
             storage = self.measure_storage()
+            gpu_utilization = self.measure_gpu_utilization()
             energy = self.measure_energy(num_tokens, num_sentences, generation_time)
 
             # Step 6: Quality metrics
@@ -385,6 +444,7 @@ class ModelBenchmark:
                 **latency,
                 **throughput,
                 **storage,
+                **gpu_utilization,
                 **energy
             }
 
