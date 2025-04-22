@@ -365,20 +365,10 @@ class ModelBenchmark:
                 **throughput,
                 **storage,
                 **gpu_utilization,
-                **energy
+                **energy,
+                ** quality_metrics
             }
 
-            if self.task == "sql":
-                result["AST_equal"] = quality_metrics["AST_equal"]
-                result["Normalized_equal"] = quality_metrics["Normalized_equal"]
-            elif self.task == "qa":
-                result["exact_match"] = quality_metrics["exact_match"]
-                result["F1_score"] = quality_metrics["F1_score"]
-            elif self.task == "summarization":
-                result["ROUGE-1"] = quality_metrics["ROUGE-1"]
-                result["ROUGE-L"] = quality_metrics["ROUGE-L"]
-            else:
-                raise ValueError(f"Unsupported task type: {self.task}")
 
             results.append(result)
 
