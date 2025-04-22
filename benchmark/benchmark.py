@@ -16,88 +16,44 @@ import string
 from sqlglot import parse_one, errors as sqlglot_errors
 import torch
 
+from benchmark.backends.backend_factory import get_backend
+
 
 class ModelBenchmark:
     def __init__(
         self,
-        tokenizer=None,
-        max_tokens: int = 256,
         backend="huggingface",
         task="summarization",
         model_path=None,
-        llama_gpu_layers=-1,
+        max_tokens=256,
         quantization=None,
         verbose=False
     ):
-        self.model_size = self.get_model_size_mb(model_path) if model_path else 0
-        self.tokenizer = tokenizer
         self.max_tokens = max_tokens
-        self.backend = backend
         self.task = task
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.verbose = verbose
-        self.quantization = quantization
 
-        if self.backend == "llama.cpp":
-            from llama_cpp import Llama
-            if model_path is None:
-                raise ValueError("You must provide llama_model_path for llama.cpp backend.")
-            if self.verbose:
-                print(f"Loading llama.cpp model from {model_path} ...")
-            self.llm = Llama(
-                model_path=model_path,
-                n_ctx=4096,
-                n_gpu_layers=llama_gpu_layers,
-                verbose=False
-            )
+        self.backend_handler = get_backend(
+            name=backend,
+            model_path=model_path,
+            quantization=quantization,
+            max_tokens=max_tokens,
+            verbose=verbose
+        )
+        self.backend_handler.load_model()
+        self.model_size = self.get_model_size_mb(model_path)
 
-        elif self.backend == "vllm":
-            
-            from vllm import LLM, SamplingParams
-            if model_path is None:
-                raise ValueError("You must provide model_path for vLLM backend.")
-            if self.verbose:
-                print(f"Loading vLLM model from {model_path} ...")
-            self.llm = LLM(
-                model=model_path,
-                quantization="bitsandbytes" if self.quantization and "bnb" in self.quantization else None,
-                trust_remote_code=True
-            )
-
-        elif self.backend == "huggingface":
-            from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
-            if self.quantization == "bnb_4bit":
-                bnb_config = BitsAndBytesConfig(
-                    load_in_4bit=True,
-                    bnb_4bit_quant_type="nf4",
-                    bnb_4bit_use_double_quant=True,
-                    bnb_4bit_compute_dtype="bfloat16"
-                )
-            elif self.quantization == "bnb_8bit":
-                bnb_config = BitsAndBytesConfig(load_in_8bit=True)
-            else:
-                bnb_config = None
-
-            self.llm = AutoModelForCausalLM.from_pretrained(
-                model_path,
-                device_map="auto",
-                trust_remote_code=True,
-                quantization_config=bnb_config
-            )
-            self.tokenizer = AutoTokenizer.from_pretrained(model_path)
-
-        else:
-            self.llm = None
-
+        # GPU monitoring
         if torch.cuda.is_available():
             nvmlInit()
             self.handle = nvmlDeviceGetHandleByIndex(0)
         else:
             self.handle = None
 
+        # Task-specific metrics
         if self.task == "summarization":
             self.rouge = evaluate.load("rouge")
-            self.bertscore = evaluate.load("bertscore")
 
     def _get_gpu_memory_usage(self):
         """Get GPU memory usage in MB."""
@@ -124,41 +80,6 @@ class ModelBenchmark:
         """Shutdown NVML (clean-up)."""
         if self.device == "cuda":
             nvmlShutdown()
-
-    def measure_ttft(self):
-        """
-        Measure Time-To-First-Token (TTFT) for a single 50 tokens prompt.
-        Uses max_new_tokens=1 and times the full generation call.
-        
-        Returns:
-            dict with TTFT (s), and prompt token count.
-        """
-
-        prompt = "Artificial intelligence is a rapidly evolving field with " \
-        "applications in healthcare, finance, education, and more. One of the " \
-        "most transformative technologies is"
-
-        if self.backend == "vllm":
-
-            sampling_params = SamplingParams(max_tokens=1)
-
-            start = time.time()
-            _ = self.llm.generate(prompt, sampling_params)
-            end = time.time()
-
-        elif self.backend == "llama.cpp":
-            start = time.time()
-            _ = self.llm(prompt=prompt, max_tokens=1)
-            end = time.time()
-        elif self.backend == "huggingface":
-            inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
-            start = time.time()
-            _ = self.llm.generate(**inputs, max_new_tokens=1)
-            end = time.time()
-        else:
-            raise ValueError(f"Unsupported backend '{self.backend}'")
-
-        return end - start
     
 
     @staticmethod
@@ -230,46 +151,13 @@ class ModelBenchmark:
         """Generates text and measures generation time."""
         start_time = time.time()
 
-        if self.backend == "huggingface":
-            inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
-            outputs = self.llm.generate(
-                **inputs,
-                temperature=0.1,
-                top_p=0.9,
-                top_k=50,
-                max_new_tokens=self.max_tokens,
-                pad_token_id=self.tokenizer.eos_token_id
-            )
-            generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-
-        elif self.backend == "vllm":
-            sampling_params = SamplingParams(
-                temperature=0.1,
-                top_p=0.9,
-                top_k=50,
-                max_tokens=self.max_tokens,
-                stop=["\n"]
-            )
-            outputs = self.llm.generate(prompt, sampling_params)
-            generated_text = outputs[0].outputs[0].text
-
-        elif self.backend == "llama.cpp":
-            response = self.llm(
-                prompt=prompt,
-                max_tokens=self.max_tokens,
-                temperature=0.1,
-                stop=["</s>"]
-            )
-            generated_text = response["choices"][0]["text"].strip()
-
-        else:
-            raise ValueError(f"Unsupported backend '{self.backend}'")
+        generated_text = self.backend_handler.generate(prompt)
 
         end_time = time.time()
         generation_time = end_time - start_time
 
         if self.verbose:
-            print(f"\nPrompt:\n{prompt}\n\nAnswer:\n{generated_text}\n")
+            print(f"Answer:\n{generated_text}\n")
         return generated_text, generation_time
     
 
@@ -290,10 +178,10 @@ class ModelBenchmark:
         - Normalizes the prediction.
         """
         # Split on common stop sequences
-        stop_tokens = ["\n\n", "\nContext:", "Context:", "\nQuestion:", "SQL:", "\nSQL", "\nAnswer:", "Answer:"]
+        stop_tokens = ["\n\n", "\nContext:", "Context:", "\nQuestion:", "SQL:", "\nSQL", "\nAnswer:", "Answer:, \nHeadline:, Headline:, \nNews:", "News:"]
         for stop in stop_tokens:
             if stop in prediction:
-                prediction = prediction.split(stop)[0]
+                prediction = prediction.split(stop)[-1].strip()
 
         return prediction
 
@@ -370,12 +258,13 @@ class ModelBenchmark:
 
             generated = generated.strip().split('\n')[0]
             rouge1 = self.rouge.compute(predictions=[generated], references=[reference], use_stemmer=True)["rouge1"]
+            rouge2 = self.rouge.compute(predictions=[generated], references=[reference], use_stemmer=True)["rouge2"]
             rougeL = self.rouge.compute(predictions=[generated], references=[reference], use_stemmer=True)["rougeL"]
-            bert = self.bertscore.compute(predictions=[generated], references=[reference], lang="en")["f1"][0]
+            
             return {
                 "ROUGE-1": rouge1,
-                "ROUGE-L": rougeL,
-                "BERTScore": bert
+                "ROUGE-2": rouge2,
+                "ROUGE-L": rougeL
             }
 
         elif self.task == "qa":
@@ -406,8 +295,21 @@ class ModelBenchmark:
 
 
 
-    def benchmark(self, prompts, references):
+    def run(self, samples=100):
         results = []
+
+        if self.task == "summarization":
+            from benchmark.tasks.summarization import SummarizationTask
+            task = SummarizationTask()
+            prompts, references = task.generate_prompts(num_examples=samples)
+        elif self.task == "qa":
+            from benchmark.tasks.qa import QATask
+            task = QATask()
+            prompts, references = task.generate_prompts(num_examples=samples)
+        elif self.task == "sql":
+            from benchmark.tasks.sql import SQLTask
+            task = SQLTask()
+            prompts, references = task.generate_prompts(num_examples=samples)
 
         for i, prompt in enumerate(prompts):
             if self.verbose:
@@ -416,20 +318,17 @@ class ModelBenchmark:
             # Step 1: Generate text and measure generation time
             generated_text, generation_time = self.generate_single(prompt)
 
+            # Clean the generated text
             generated_text = self.clean_prediction(generated_text)
+            if self.verbose:
+                print(f"Generated text:\n{generated_text}\n")
 
             # Step 2: Count tokens and sentences
-            if self.backend == "huggingface":
-                num_tokens = len(self.tokenizer(generated_text).input_ids)
-            elif self.backend in ["vllm", "llama.cpp"]:
-                num_tokens = len(generated_text.split())
-            else:
-                num_tokens = 0
-
+            num_tokens = len(generated_text.split())
             num_sentences = generated_text.count('.') + 1
 
             # Step 3: Latency metrics
-            TTFT = self.measure_ttft()
+            TTFT = self.backend_handler.measure_ttft()
             ATL = generation_time / (num_tokens - 1) if num_tokens > 1 else 0
 
             latency = {
@@ -478,7 +377,6 @@ class ModelBenchmark:
             elif self.task == "summarization":
                 result["ROUGE-1"] = quality_metrics["ROUGE-1"]
                 result["ROUGE-L"] = quality_metrics["ROUGE-L"]
-                result["BERTScore"] = quality_metrics["BERTScore"]
             else:
                 raise ValueError(f"Unsupported task type: {self.task}")
 
