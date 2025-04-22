@@ -183,6 +183,7 @@ llama-3.1-8B/
 
 llama_cpp_results/
 vLLM_results/
+HF_results/
 gemma-3-gguf/
 mixtral-instruct-gguf/
 tables.json
