@@ -10,12 +10,6 @@ from pynvml import (
 import time
 import pandas as pd
 import os
-from huggingface_hub import hf_hub_download
-import json
-import numpy as np
-import math
-from llama_cpp import Llama
-from vllm import LLM, SamplingParams
 import evaluate
 import re
 import string
@@ -32,18 +26,9 @@ class ModelBenchmark:
         task="summarization",
         model_path=None,
         llama_gpu_layers=-1,
+        quantization=None,
         verbose=False
     ):
-        """
-        Initialize benchmarking for Hugging Face, vLLM, and llama.cpp models.
-
-        :param model: Hugging Face/vLLM model or None for llama.cpp
-        :param tokenizer: HF tokenizer (optional if using llama.cpp)
-        :param max_tokens: Max tokens to generate
-        :param backend: 'huggingface', 'vllm', or 'llama.cpp'
-        :param llama_model_path: GGUF model path (required if backend == llama.cpp)
-        :param llama_gpu_layers: Number of layers to offload to GPU (llama.cpp only)
-        """
         self.model_size = self.get_model_size_mb(model_path) if model_path else 0
         self.tokenizer = tokenizer
         self.max_tokens = max_tokens
@@ -51,9 +36,10 @@ class ModelBenchmark:
         self.task = task
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.verbose = verbose
+        self.quantization = quantization
 
-        # llama.cpp initialization
         if self.backend == "llama.cpp":
+            from llama_cpp import Llama
             if model_path is None:
                 raise ValueError("You must provide llama_model_path for llama.cpp backend.")
             if self.verbose:
@@ -64,16 +50,45 @@ class ModelBenchmark:
                 n_gpu_layers=llama_gpu_layers,
                 verbose=False
             )
+
         elif self.backend == "vllm":
+            
+            from vllm import LLM, SamplingParams
             if model_path is None:
                 raise ValueError("You must provide model_path for vLLM backend.")
             if self.verbose:
                 print(f"Loading vLLM model from {model_path} ...")
-            self.llm = LLM(model=model_path)
+            self.llm = LLM(
+                model=model_path,
+                quantization="bitsandbytes" if self.quantization and "bnb" in self.quantization else None,
+                trust_remote_code=True
+            )
+
+        elif self.backend == "huggingface":
+            from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+            if self.quantization == "bnb_4bit":
+                bnb_config = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_quant_type="nf4",
+                    bnb_4bit_use_double_quant=True,
+                    bnb_4bit_compute_dtype="bfloat16"
+                )
+            elif self.quantization == "bnb_8bit":
+                bnb_config = BitsAndBytesConfig(load_in_8bit=True)
+            else:
+                bnb_config = None
+
+            self.llm = AutoModelForCausalLM.from_pretrained(
+                model_path,
+                device_map="auto",
+                trust_remote_code=True,
+                quantization_config=bnb_config
+            )
+            self.tokenizer = AutoTokenizer.from_pretrained(model_path)
+
         else:
             self.llm = None
 
-        # GPU power/memory tracking
         if torch.cuda.is_available():
             nvmlInit()
             self.handle = nvmlDeviceGetHandleByIndex(0)
@@ -125,7 +140,7 @@ class ModelBenchmark:
 
         if self.backend == "vllm":
 
-            sampling_params = SamplingParams(temperature=0.0, max_tokens=1)
+            sampling_params = SamplingParams(max_tokens=1)
 
             start = time.time()
             _ = self.llm.generate(prompt, sampling_params)
@@ -133,9 +148,13 @@ class ModelBenchmark:
 
         elif self.backend == "llama.cpp":
             start = time.time()
-            _ = self.llm(prompt=prompt, temperature=0.0, max_tokens=1)
+            _ = self.llm(prompt=prompt, max_tokens=1)
             end = time.time()
-
+        elif self.backend == "huggingface":
+            inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
+            start = time.time()
+            _ = self.llm.generate(**inputs, max_new_tokens=1)
+            end = time.time()
         else:
             raise ValueError(f"Unsupported backend '{self.backend}'")
 
@@ -213,8 +232,11 @@ class ModelBenchmark:
 
         if self.backend == "huggingface":
             inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
-            outputs = self.model.generate(
+            outputs = self.llm.generate(
                 **inputs,
+                temperature=0.1,
+                top_p=0.9,
+                top_k=50,
                 max_new_tokens=self.max_tokens,
                 pad_token_id=self.tokenizer.eos_token_id
             )
@@ -222,7 +244,7 @@ class ModelBenchmark:
 
         elif self.backend == "vllm":
             sampling_params = SamplingParams(
-                temperature=0.0,
+                temperature=0.1,
                 top_p=0.9,
                 top_k=50,
                 max_tokens=self.max_tokens,
@@ -235,7 +257,7 @@ class ModelBenchmark:
             response = self.llm(
                 prompt=prompt,
                 max_tokens=self.max_tokens,
-                temperature=0.0,
+                temperature=0.1,
                 stop=["</s>"]
             )
             generated_text = response["choices"][0]["text"].strip()
@@ -353,7 +375,6 @@ class ModelBenchmark:
             return {
                 "ROUGE-1": rouge1,
                 "ROUGE-L": rougeL,
-                "ROUGE_avg": (rouge1 + rougeL) / 2,
                 "BERTScore": bert
             }
 

@@ -186,4 +186,5 @@ vLLM_results/
 gemma-3-gguf/
 mixtral-instruct-gguf/
 tables.json
-openGPT-X/
+Teuken-7B-instruct-research-v0.4/
+llama-3.1-8B-Instruct-quantizised/
