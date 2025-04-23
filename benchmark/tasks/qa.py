@@ -47,6 +47,18 @@ class QATask:
 
         return prompt_template.format(context=context, question=question)
 
+    def quality_metrics(self, generated, reference):
+        generated = self.clean_prediction(generated)
+        ref_list = reference if isinstance(reference, list) else [reference]
+
+        em = self.compute_exact_match(generated, ref_list)
+        f1 = self.compute_f1(generated, ref_list)
+
+        return {
+            "exact_match": em,
+            "F1_score": f1
+        }
+
 
 if __name__ == "__main__":
     task = QATask(num_examples=3)

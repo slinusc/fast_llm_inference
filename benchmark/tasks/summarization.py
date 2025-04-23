@@ -1,5 +1,6 @@
 import random
 from datasets import load_dataset
+import evaluate
 
 class SummarizationTask:
     """
@@ -8,9 +9,10 @@ class SummarizationTask:
 
     def __init__(self):
         random.seed(42)
+        self.rouge = evaluate.load("rouge")
         self.dataset = list(load_dataset("cnn_dailymail", "3.0.0")["test"])
 
-    def generate_prompts(self, num_examples=100):
+    def generate_prompts(self, num_examples : int = 100):
         """
         Generates random summarization prompts and references.
         """
@@ -20,7 +22,7 @@ class SummarizationTask:
         return prompts, references
 
     @staticmethod
-    def sum_prompt(article):
+    def sum_prompt(article : str) -> str:
         """
         Summarize the given `article` into a 2–3 sentence summary (CNN/DailyMail style), using a single demonstration example.
         """
@@ -29,20 +31,44 @@ class SummarizationTask:
 
             "Example:\n\n"
 
-            "Article: President Biden held a press conference today addressing the growing concerns over inflation and rising gas prices. "
-            "He outlined the administration's plans to release additional oil reserves and invest in clean energy initiatives to ease economic pressures. "
-            "The President also reassured the public that steps are being taken to stabilize the supply chain and reduce long-term costs. "
-            "Reporters questioned whether these measures would have a short-term impact, but Biden remained confident in the approach.\n\n"
+            "Article:\n"
+            "(CNN) -- The partnership started as a single shop on Oxford Street in London, opened in 1864 by John Lewis. "
+            "Today the partnership is an organization with bases throughout the UK, with supermarkets and department stores, "
+            "employing approximately 67,100 people. All 67,100 permanent staff are Partners who own 26 John Lewis department stores, "
+            "183 Waitrose supermarkets, an online and catalogue business, John Lewis Direct a direct services company - Greenbee, "
+            "three production units and a farm. Every Partner receives the same scale of bonus, based on a fixed percentage of their annual wage. "
+            "The bonus for 2006 was 18% equivalent to 9 weeks pay, which was rolled out for every employee. "
+            "Chairman Sir Stuart Hampson retired at the end of March 2007, his successor is Charlie Mayfield. Hampson's salary for January 26, "
+            "2006 to January 26, 2007 was $1.66 million which included the partnership bonus of $250,000. John Lewis' consolidated revenue for "
+            "the last financial year was $11.4 billion.  E-mail to a friend ."
 
-            "Summary: President Biden announced plans to combat inflation by releasing oil reserves and investing in clean energy. "
-            "He also pledged to address supply chain issues and stabilize costs.\n\n"
+            "Summary:\n"
+            "John Lewis Partnership began as a shop on London's Oxford street in 1864 .\n"
+            "All 67,100 employees are partners in the organization and own shares ."
 
             "Now summarize the following article:\n\n"
+
             f"Article: {article}\n"
-            "Summary:"
+        
+            "Summary:\n"
         )
 
         return prompt
+    
+    def quality_metrics(self, generated : str, reference : str) -> float:
+        """
+        Returns the metric used for evaluation.
+        """
+        generated = generated.strip().split('\n')[0]
+        rouge1 = self.rouge.compute(predictions=[generated], references=[reference], use_stemmer=True)["rouge1"]
+        rouge2 = self.rouge.compute(predictions=[generated], references=[reference], use_stemmer=True)["rouge2"]
+        rougeL = self.rouge.compute(predictions=[generated], references=[reference], use_stemmer=True)["rougeL"]
+        
+        return {
+            "ROUGE-1": rouge1,
+            "ROUGE-2": rouge2,
+            "ROUGE-L": rougeL
+        }
 
 
 if __name__ == "__main__":
