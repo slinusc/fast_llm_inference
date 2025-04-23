@@ -10,10 +10,6 @@ from pynvml import (
 import time
 import pandas as pd
 import os
-import evaluate
-import re
-import string
-from sqlglot import parse_one, errors as sqlglot_errors
 import torch
 
 from benchmark.backends.backend_factory import get_backend
@@ -24,11 +20,15 @@ class ModelBenchmark:
         self,
         backend="huggingface",
         task="summarization",
+        model_name="",
         model_path=None,
         max_tokens=256,
         quantization=None,
         verbose=False
     ):
+        self.backend = backend
+        self.task = task
+        self.model_name = model_name
         self.max_tokens = max_tokens
         self.task = task
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -51,9 +51,6 @@ class ModelBenchmark:
         else:
             self.handle = None
 
-        # Task-specific metrics
-        if self.task == "summarization":
-            self.rouge = evaluate.load("rouge")
 
     def _get_gpu_memory_usage(self):
         """Get GPU memory usage in MB."""
@@ -161,155 +158,20 @@ class ModelBenchmark:
         return generated_text, generation_time
     
 
-    @staticmethod
-    def normalize_answer(s):
-        """Lowercase, remove punctuation, articles, and normalize whitespace."""
-        s = s.lower()
-        s = re.sub(r'\b(a|an|the)\b', ' ', s)  # remove articles
-        s = s.translate(str.maketrans('', '', string.punctuation))  # remove punctuation
-        s = re.sub(r'\s+', ' ', s)  # collapse multiple spaces
-        return s.strip()
-
-
-    def clean_prediction(self, prediction):
-        """
-        Cleans the raw prediction output from llama.cpp.
-        - Truncates at a new line, 'Context:', or other stop signals.
-        - Normalizes the prediction.
-        """
-        # Split on common stop sequences
-        stop_tokens = ["\n\n", "\nContext:", "Context:", "\nQuestion:", "SQL:", "\nSQL", "\nAnswer:", "Answer:, \nHeadline:, Headline:, \nNews:", "News:"]
-        for stop in stop_tokens:
-            if stop in prediction:
-                prediction = prediction.split(stop)[-1].strip()
-
-        return prediction
-
-
-    def compute_exact_match(self, prediction, ground_truths):
-        """Exact match: 1 if prediction is in ground_truths, else 0."""
-        prediction = self.normalize_answer(self.clean_prediction(prediction))
-        ground_truths = [self.normalize_answer(gt) for gt in ground_truths]
-
-        return int(prediction in ground_truths)
-
-
-    def compute_f1(self, prediction, ground_truths):
-        """Compute the maximum F1 over all ground truths."""
-        def get_tokens(s):
-            return self.normalize_answer(s).split()
-
-        pred_tokens = get_tokens(prediction)
-        if not pred_tokens:
-            return int(not any(get_tokens(gt) for gt in ground_truths))
-
-        scores = []
-        for gt in ground_truths:
-            gt_tokens = get_tokens(gt)
-            common = set(pred_tokens) & set(gt_tokens)
-            num_same = len(common)
-
-            if num_same == 0:
-                scores.append(0)
-                continue
-
-            precision = num_same / len(pred_tokens)
-            recall = num_same / len(gt_tokens)
-            f1 = 2 * precision * recall / (precision + recall)
-            scores.append(f1)
-
-        return max(scores)
-
-
-    def normalized_equal(self, sql1: str, sql2: str) -> int:
-        """
-        Compare two SQL strings after normalization (ignores case/spacing).
-        """
-        return int(self.normalize_answer(sql1) == self.normalize_answer(sql2))
-
-    @staticmethod
-    def ast_equal(sql1: str, sql2: str) -> int:
-        """
-        Compare two SQL statements by parsing them into ASTs.
-        Returns True if their structure and logic are equal.
-        """
-        try:
-            tree1 = parse_one(sql1.lower()) # lower, since the reference is lower, even though the columns and tables are not
-            tree2 = parse_one(sql2.lower())
-            return int(tree1 == tree2)
-        except sqlglot_errors.ParseError as e:
-            print(f"[AST Parse Error] {e}")
-            return int(False)
-    
-
-    def _quality_metrics(self, generated: str, reference: str) -> dict:
-        """
-        Compute evaluation metrics for a single prediction-reference pair based on task type.
-
-        Args:
-            generated (str): The generated answer.
-            reference (str or list): The ground truth answer(s).
-            task (str): Task type, one of ['summarization', 'qa', 'sql'].
-
-        Returns:
-            dict: Dictionary of evaluation metric scores.
-        """
-        if self.task == "summarization":
-
-            generated = generated.strip().split('\n')[0]
-            rouge1 = self.rouge.compute(predictions=[generated], references=[reference], use_stemmer=True)["rouge1"]
-            rouge2 = self.rouge.compute(predictions=[generated], references=[reference], use_stemmer=True)["rouge2"]
-            rougeL = self.rouge.compute(predictions=[generated], references=[reference], use_stemmer=True)["rougeL"]
-            
-            return {
-                "ROUGE-1": rouge1,
-                "ROUGE-2": rouge2,
-                "ROUGE-L": rougeL
-            }
-
-        elif self.task == "qa":
-
-            generated = self.clean_prediction(generated)
-            ref_list = reference if isinstance(reference, list) else [reference]
-
-            em = self.compute_exact_match(generated, ref_list)
-            f1 = self.compute_f1(generated, ref_list)
-
-            return {
-                "exact_match": em,
-                "F1_score": f1
-            }
-
-        elif self.task == "sql":
-
-            ast = self.ast_equal(generated, reference)
-            normalized_equ = self.normalized_equal(generated, reference)
-
-            return {
-                "AST_equal": ast,
-                "Normalized_equal": normalized_equ
-            }
-
-        else:
-            raise ValueError(f"Unsupported task type: {self.task}")
-
-
-
     def run(self, samples=100):
         results = []
 
         if self.task == "summarization":
             from benchmark.tasks.summarization import SummarizationTask
             task = SummarizationTask()
-            prompts, references = task.generate_prompts(num_examples=samples)
         elif self.task == "qa":
             from benchmark.tasks.qa import QATask
             task = QATask()
-            prompts, references = task.generate_prompts(num_examples=samples)
         elif self.task == "sql":
             from benchmark.tasks.sql import SQLTask
             task = SQLTask()
-            prompts, references = task.generate_prompts(num_examples=samples)
+        
+        prompts, references = task.generate_prompts(num_examples=samples)
 
         for i, prompt in enumerate(prompts):
             if self.verbose:
@@ -353,7 +215,7 @@ class ModelBenchmark:
 
             # Step 6: Quality metrics
             reference = references[i] if isinstance(references, list) else references
-            quality_metrics = self._quality_metrics(generated_text, reference)
+            quality_metrics = task.quality_metrics(generated_text, reference)
 
             # Step 7: Collect results
             result = {
@@ -366,7 +228,7 @@ class ModelBenchmark:
                 **storage,
                 **gpu_utilization,
                 **energy,
-                ** quality_metrics
+                **quality_metrics
             }
 
 
@@ -377,4 +239,19 @@ class ModelBenchmark:
             
             torch.cuda.empty_cache()
 
-        return pd.DataFrame(results)
+        results = pd.DataFrame(results)
+        results.to_csv(f"results/{self.backend}_{self.model_name}_{self.task}.csv", index=False)
+
+        # Compute statistics
+        numeric_results = results.select_dtypes(include='number')
+        averages = numeric_results.mean()
+        stds = numeric_results.std()
+
+        # Combine mean ± std into a formatted string
+        summary = averages.combine(stds, lambda mean, std: f"{mean:.6f} ± {std:.6f}")
+
+        # Print formatted summary
+        print(f"Statistics (mean ± std) for {self.model_name}:")
+        print(summary)
+
+        return results
