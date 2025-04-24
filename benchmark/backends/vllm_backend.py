@@ -7,12 +7,18 @@ class VLLMBackend(BaseBackend):
         self.model = LLM(
             model=self.model_path,
             # quantization="bitsandbytes" if self.quantization and "bnb" in self.quantization else None,
-            trust_remote_code=True
+            trust_remote_code=True,
+
         )
 
     def generate(self, prompt):
-        
-        outputs = self.model.generate(prompt)
+        params = SamplingParams(
+            temperature=0.1,
+            max_tokens=self.max_tokens,
+            stop=["\n"])
+
+
+        outputs = self.model.generate(prompt, params)
         text = outputs[0].outputs[0].text
         return text
 
@@ -23,3 +29,17 @@ class VLLMBackend(BaseBackend):
         _ = self.model.generate(prompt, sampling_params)
         end = time.time()
         return end - start
+
+
+if __name__ == "__main__":
+    backend = VLLMBackend(
+        model_path="meta-llama/Llama-2-7b-chat-hf",
+        task="text-generation",
+        max_tokens=256,
+        quantization=None,
+        verbose=True
+    )
+    backend.load_model()
+    prompt = "Artificial intelligence is a rapidly evolving field with applications in healthcare, finance, education, and more. One of the most transformative technologies is"
+    print(backend.generate(prompt))
+    print(backend.measure_ttft())

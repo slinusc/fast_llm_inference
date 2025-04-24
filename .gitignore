@@ -176,16 +176,8 @@ llama.cpp/
 
 Loading_your_LLM.ipynb
 
-llama-3.1-8B-Instruct-gguf/
-llama-3.1-8B-Instruct/
-llama-3.1-8B-gguf/
-llama-3.1-8B/
-
-llama_cpp_results/
-vLLM_results/
-HF_results/
-gemma-3-gguf/
-mixtral-instruct-gguf/
 tables.json
-Teuken-7B-instruct-research-v0.4/
-llama-3.1-8B-Instruct-quantizised/
+
+results/
+
+models/

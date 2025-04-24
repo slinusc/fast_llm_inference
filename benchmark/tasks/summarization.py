@@ -54,6 +54,21 @@ class SummarizationTask:
         )
 
         return prompt
+
+    @staticmethod
+    def clean_prediction(self, prediction):
+        """
+        Cleans the raw prediction output from llama.cpp.
+        - Truncates at a new line, 'Context:', or other stop signals.
+        - Normalizes the prediction.
+        """
+        # Split on common stop sequences
+        stop_tokens = ["\nArticle:", "Article:", "\nSummary:", "Summary:"]
+        for stop in stop_tokens:
+            if stop in prediction:
+                prediction = prediction.split(stop)[-1].strip()
+
+        return prediction
     
     def quality_metrics(self, generated : str, reference : str) -> float:
         """

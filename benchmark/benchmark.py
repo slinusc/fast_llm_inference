@@ -30,7 +30,6 @@ class ModelBenchmark:
         self.task = task
         self.model_name = model_name
         self.max_tokens = max_tokens
-        self.task = task
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.verbose = verbose
 
@@ -153,8 +152,6 @@ class ModelBenchmark:
         end_time = time.time()
         generation_time = end_time - start_time
 
-        if self.verbose:
-            print(f"Answer:\n{generated_text}\n")
         return generated_text, generation_time
     
 
@@ -163,15 +160,17 @@ class ModelBenchmark:
 
         if self.task == "summarization":
             from benchmark.tasks.summarization import SummarizationTask
-            task = SummarizationTask()
+            task_ = SummarizationTask()
         elif self.task == "qa":
             from benchmark.tasks.qa import QATask
-            task = QATask()
+            task_ = QATask()
         elif self.task == "sql":
             from benchmark.tasks.sql import SQLTask
-            task = SQLTask()
-        
-        prompts, references = task.generate_prompts(num_examples=samples)
+            task_ = SQLTask()
+        else:
+            raise ValueError(f"Task {self.task} not supported.")
+
+        prompts, references = task_.generate_prompts(num_examples=samples)
 
         for i, prompt in enumerate(prompts):
             if self.verbose:
@@ -181,9 +180,10 @@ class ModelBenchmark:
             generated_text, generation_time = self.generate_single(prompt)
 
             # Clean the generated text
-            generated_text = self.clean_prediction(generated_text)
+            generated_text = task_.clean_prediction(generated_text)
             if self.verbose:
                 print(f"Generated text:\n{generated_text}\n")
+                print(f"Reference text:\n{references[i]}\n")
 
             # Step 2: Count tokens and sentences
             num_tokens = len(generated_text.split())
@@ -215,7 +215,7 @@ class ModelBenchmark:
 
             # Step 6: Quality metrics
             reference = references[i] if isinstance(references, list) else references
-            quality_metrics = task.quality_metrics(generated_text, reference)
+            quality_metrics = task_.quality_metrics(generated_text, reference)
 
             # Step 7: Collect results
             result = {
@@ -231,7 +231,6 @@ class ModelBenchmark:
                 **quality_metrics
             }
 
-
             results.append(result)
 
             if self.verbose:
@@ -240,7 +239,6 @@ class ModelBenchmark:
             torch.cuda.empty_cache()
 
         results = pd.DataFrame(results)
-        results.to_csv(f"results/{self.backend}_{self.model_name}_{self.task}.csv", index=False)
 
         # Compute statistics
         numeric_results = results.select_dtypes(include='number')
@@ -251,7 +249,13 @@ class ModelBenchmark:
         summary = averages.combine(stds, lambda mean, std: f"{mean:.6f} ± {std:.6f}")
 
         # Print formatted summary
-        print(f"Statistics (mean ± std) for {self.model_name}:")
+        print(f"Statistics (mean ± std) for {self.model_name}, with {self.backend}, for task: {self.task}:")
         print(summary)
+
+        results.to_csv(f"/home/ubuntu/fast_llm_inference/results/{self.backend}_{self.model_name}_{self.task}.csv", index=False)
+
+        self.backend_handler = None
+        if self.device == "cuda":
+            nvmlShutdown()
 
         return results

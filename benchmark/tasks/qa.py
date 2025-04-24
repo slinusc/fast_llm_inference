@@ -8,20 +8,19 @@ class QATask:
     A class to handle the question answering task using the SQuAD v2 dataset.
     """
 
-    def __init__(self, num_examples=100):
+    def __init__(self):
         random.seed(42)
         self.dataset = load_dataset("squad_v2")
-        self.num_examples = num_examples
 
-    def generate_prompts(self):
+    def generate_prompts(self, num_examples : int = 100):
         """
         Generates prompts and references for QA using SQuAD v2.
         """
         validation_list = list(self.dataset["validation"])
-        sampled_questions = random.sample(validation_list, 2 * self.num_examples)
+        sampled_questions = random.sample(validation_list, 2 * num_examples)
 
         # Keep only examples that have at least one answer
-        questions_with_answers = [ex for ex in sampled_questions if len(ex['answers']['text']) > 0][:self.num_examples]
+        questions_with_answers = [ex for ex in sampled_questions if len(ex['answers']['text']) > 0][:num_examples]
 
         prompts = [self.qa_prompt(example) for example in questions_with_answers]
         references = [example['answers']['text'] for example in questions_with_answers]
@@ -56,7 +55,7 @@ class QATask:
         - Normalizes the prediction.
         """
         # Split on common stop sequences
-        stop_tokens = ["\n\n", "\nContext:", "Context:", "\nQuestion:", "\nAnswer:", "Answer:"]
+        stop_tokens = ["\n\n", "\nContext:", "Context:", "\nQuestion:", "Question", "\nAnswer:", "Answer:"]
         for stop in stop_tokens:
             if stop in prediction:
                 prediction = prediction.split(stop)[-1].strip()
@@ -71,6 +70,7 @@ class QATask:
         s = s.translate(str.maketrans('', '', string.punctuation))  # remove punctuation
         s = re.sub(r'\s+', ' ', s)  # collapse multiple spaces
         return s.strip()
+
 
     def compute_exact_match(self, prediction, ground_truths):
         """Exact match: 1 if prediction is in ground_truths, else 0."""

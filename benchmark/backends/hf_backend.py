@@ -17,12 +17,11 @@ class HuggingFaceBackend(BaseBackend):
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
         inputs.pop("token_type_ids", None)  # Remove unsupported key for decoder-only models
 
-        params = self.default_generation_params()
-
         outputs = self.model.generate(
             **inputs,
-            temperature=params["temperature"],
-            max_new_tokens=params["max_tokens"]
+            temperature=0.1,
+            max_tokens=self.max_tokens,
+            stop=["\n"]
         )
 
         text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)

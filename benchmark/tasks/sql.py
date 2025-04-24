@@ -3,22 +3,21 @@ import json
 from datasets import load_dataset
 from sqlglot import parse_one, errors as sqlglot_errors
 
-class SqlTask:
+class SQLTask:
     """
     A class to handle the SQL generation task using the Spider dataset.
     """
 
-    def __init__(self, num_examples=100, tables_path="/home/ubuntu/fast_llm_inference/tables.json"):
+    def __init__(self, tables_path="/home/ubuntu/fast_llm_inference/tables.json"):
         random.seed(42)
-        self.dataset = list(load_dataset("spider", split="test"))
-        self.num_examples = num_examples
+        self.dataset = list(load_dataset("spider", split="validation"))
         self.tables_path = tables_path
 
-    def generate_prompts(self):
+    def generate_prompts(self, num_examples : int = 100):
         """
         Generates prompts and references for SQL generation using the Spider dataset.
         """
-        sampled = random.sample(self.dataset, self.num_examples)
+        sampled = random.sample(self.dataset, num_examples)
         prompts = [self.sql_prompt(example) for example in sampled]
         references = [example["query"] for example in sampled]
         return prompts, references
@@ -69,8 +68,15 @@ class SqlTask:
 
         return prompt_template.format(question=question, column_context=column_context)
 
-    @staticmethod
-    def quality_metrics(generated, reference):
+
+    def clean_prediction(self, prediction):
+        stop_tokens = ["\n\n", "\nContext:", "Context:", "\nQuestion:", "SQL:", "\nSQL", "\nAnswer:", "Answer:"]
+        for stop in stop_tokens:
+            if stop in prediction:
+                prediction = prediction.split(stop)[0]
+        return prediction
+
+    def quality_metrics(self, generated, reference):
 
         def normalize_answer(s):
             import re, string
@@ -79,13 +85,6 @@ class SqlTask:
             s = s.translate(str.maketrans('', '', string.punctuation))
             s = re.sub(r'\s+', ' ', s)
             return s.strip()
-
-        def clean_prediction(prediction):
-            stop_tokens = ["\n\n", "\nContext:", "Context:", "\nQuestion:", "SQL:", "\nSQL", "\nAnswer:", "Answer:"]
-            for stop in stop_tokens:
-                if stop in prediction:
-                    prediction = prediction.split(stop)[0]
-            return prediction
 
         def ast_equal(sql1, sql2):
             try:
@@ -98,7 +97,7 @@ class SqlTask:
         def normalized_equal(sql1, sql2):
             return int(normalize_answer(sql1) == normalize_answer(sql2))
 
-        pred = clean_prediction(generated)
+        pred = self.clean_prediction(generated)
 
         return {
             "AST_equal": ast_equal(pred, reference),
