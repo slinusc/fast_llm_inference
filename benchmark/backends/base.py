@@ -19,7 +19,7 @@ class BaseBackend(ABC):
         pass
 
     @abstractmethod
-    def generate(self, prompt):
+    def generate(self, prompt, task_type):
         """Generate output for a single prompt. Returns (output_text, duration_in_sec)."""
         pass
 

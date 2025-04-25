@@ -1,37 +1,85 @@
 import time
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from transformers import pipeline, StoppingCriteria, StoppingCriteriaList
 from benchmark.backends.base import BaseBackend
 
+
+class KeywordStopper(StoppingCriteria):
+    """
+    Stop generation as soon as *any* stop string shows up
+    **after** the prompt.
+    """
+    def __init__(self, stop_strings, tokenizer, prompt_len, window=48):
+        super().__init__()
+        self.stop_strings = stop_strings
+        self.tokenizer = tokenizer
+        self.prompt_len = prompt_len
+        self.window = window
+
+    def __call__(self, input_ids, scores, **kwargs):
+        # Only inspect generated tokens (skip the prompt part)
+        gen_ids = input_ids[0, self.prompt_len :][-self.window :]
+        tail_text = self.tokenizer.decode(gen_ids, skip_special_tokens=False)
+        return any(s in tail_text for s in self.stop_strings)
+
+
 class HuggingFaceBackend(BaseBackend):
+    """
+    Wraps HF `pipeline("text-generation")`
+    • return_full_text=False strips the prompt
+    • device_map="auto"     handles sharding
+    """
+
+    # ────────────────────────────────────────────────────────────────
     def load_model(self):
-        self.model = AutoModelForCausalLM.from_pretrained(
-            self.model_path,
+        self.pipe = pipeline(
+            "text-generation",
+            model=self.model_path,
+            torch_dtype="auto",
             device_map="auto",
-            trust_remote_code=True
+            trust_remote_code=True,
         )
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_path)
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.tokenizer = self.pipe.tokenizer
 
-    def generate(self, prompt):
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
-        inputs.pop("token_type_ids", None)  # Remove unsupported key for decoder-only models
+    # ────────────────────────────────────────────────────────────────
+    def generate(self, prompt, task_type=None):
+        stop_strs = {
+            "qa":  ["\n", " Context:", "Question:", "Answer:"],
+            "sql": [";", "\n", "Answer:"],
+            "summarization": ["\n"], 
+            None: None,
+        }[task_type]
 
-        outputs = self.model.generate(
-            **inputs,
+        max_new = {"qa": 32, "sql": 64, "summarization": 256}.get(task_type, self.max_tokens)
+
+        # Encode once to get prompt length for the stopper
+        enc = self.tokenizer(prompt, return_tensors="pt")
+        prompt_len = enc.input_ids.shape[1]
+
+        stopper = (
+            StoppingCriteriaList(
+                [KeywordStopper(stop_strs, self.tokenizer, prompt_len)]
+            )
+            if stop_strs else None
+        )
+
+        out = self.pipe(
+            prompt,
+            max_new_tokens=max_new,
             temperature=0.1,
-            max_tokens=self.max_tokens,
-            stop=["\n"]
+            do_sample=False,
+            return_full_text=False,
+            stopping_criteria=stopper,
         )
 
-        text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-        return text
+        return out[0]["generated_text"].strip()
 
-
+    # ────────────────────────────────────────────────────────────────
     def measure_ttft(self):
-        prompt = "Artificial intelligence is a rapidly evolving field with applications in healthcare, finance, education, and more. One of the most transformative technologies is"
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
         start = time.time()
-        _ = self.model.generate(**inputs, max_new_tokens=1)
-        end = time.time()
-        return end - start
+        _ = self.pipe(
+            "Artificial intelligence is",
+            max_new_tokens=1,
+            temperature=0.1,
+            return_full_text=False,
+        )
+        return time.time() - start

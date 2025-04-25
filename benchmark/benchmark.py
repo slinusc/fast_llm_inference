@@ -143,11 +143,15 @@ class ModelBenchmark:
         return {}
 
 
-    def generate_single(self, prompt: str):
+    def generate_single(self, prompt: str, task=None):
         """Generates text and measures generation time."""
+
+        if task is None:
+            task = self.task
+
         start_time = time.time()
 
-        generated_text = self.backend_handler.generate(prompt)
+        generated_text = self.backend_handler.generate(prompt, task_type=task)
 
         end_time = time.time()
         generation_time = end_time - start_time

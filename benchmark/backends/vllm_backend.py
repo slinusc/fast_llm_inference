@@ -11,16 +11,26 @@ class VLLMBackend(BaseBackend):
 
         )
 
-    def generate(self, prompt):
+    def generate(self, prompt, task_type=None):
+
+        stop_strs = {
+            "qa":  ["\n", " Context:", "Question:", "Answer:"],
+            "sql": [";", "\n", "Answer:"],
+            "summarization": ["Summary:"], 
+            None: None,
+        }
+
+        max_new = {"qa": 32, "sql": 64, "summarization": 256}.get(task_type, self.max_tokens)
+
         params = SamplingParams(
             temperature=0.1,
-            max_tokens=self.max_tokens,
-            stop=["\n"])
-
+            max_tokens=max_new,
+            stop=stop_strs[task_type]
+        )
 
         outputs = self.model.generate(prompt, params)
         text = outputs[0].outputs[0].text
-        return text
+        return text.lstrip()
 
     def measure_ttft(self):
         prompt = "Artificial intelligence is a rapidly evolving field with applications in healthcare, finance, education, and more. One of the most transformative technologies is"

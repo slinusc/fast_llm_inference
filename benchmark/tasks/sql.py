@@ -106,7 +106,7 @@ class SQLTask:
 
 
 if __name__ == "__main__":
-    task = SqlTask(num_examples=3)
+    task = SQLTask(num_examples=3)
     prompts, references = task.generate_prompts()
     for i in range(3):
         print(f"Prompt {i+1}:")

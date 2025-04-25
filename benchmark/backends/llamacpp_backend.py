@@ -7,24 +7,33 @@ class LlamaCppBackend(BaseBackend):
     def load_model(self):
         self.model = Llama(
             model_path=self.model_path,
-            n_ctx=4096,
-            n_gpu_layers=self.quantization if isinstance(self.quantization, int) else -1,
+            n_gpu_layers= -1,
+            n_ctx=8192,
             verbose=False
         )
 
-    def generate(self, prompt):
-        start = time.time()
-        params = self.default_generation_params()
-        response = self.model(
-            prompt=prompt,
-            max_tokens=params["max_tokens"],
-            temperature=params["temperature"],
-            stop=params["stop"]
+    def generate(self, prompt, task_type=None):
+
+        stop_strs = {
+            "qa":  ["Context:", "Question:", "Answer:", "<|eot_id|>"],
+            "sql": [";" , "Question:", "<|eot_id|>"],
+            "summarization": ["Summary:", "<|eot_id|>"],
+            None: [],
+        }[task_type]
+
+        max_new = {"qa": 64, "sql": 128, "summarization": 256}.get(
+            task_type, self.max_tokens
         )
 
-        end = time.time()
+        response = self.model(
+            prompt=prompt,
+            max_tokens=max_new,
+            temperature=0.1,
+            stop=stop_strs       # list can be empty
+        )
+
         text = response["choices"][0]["text"].strip()
-        return text, end - start
+        return text
 
     def measure_ttft(self):
         prompt = "Artificial intelligence is a rapidly evolving field with applications in healthcare, finance, education, and more. One of the most transformative technologies is"
