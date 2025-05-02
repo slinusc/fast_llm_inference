@@ -43,9 +43,9 @@ class HuggingFaceBackend(BaseBackend):
     # ────────────────────────────────────────────────────────────────
     def generate(self, prompt, task_type=None):
         stop_strs = {
-            "qa":  ["\n", " Context:", "Question:", "Answer:"],
-            "sql": [";", "\n", "Answer:"],
-            "summarization": ["\n"], 
+            "qa":  ["<|assistant|>"],
+            "sql": ["<|assistant|>"],
+            "summarization": ["<|assistant|>"], 
             None: None,
         }[task_type]
 

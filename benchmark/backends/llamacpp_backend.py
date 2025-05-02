@@ -1,5 +1,4 @@
 import time
-from vllm import LLM, SamplingParams
 from benchmark.backends.base import BaseBackend
 from llama_cpp import Llama
 
@@ -41,3 +40,14 @@ class LlamaCppBackend(BaseBackend):
         _ = self.model(prompt=prompt, max_tokens=1)
         end = time.time()
         return end - start
+
+
+if __name__ == "__main__":
+    # Example usage
+    backend = LlamaCppBackend(model_path="/home/ubuntu/fast_llm_inference/models/qwen2.5-7B-instruct-f16.gguf")
+    backend.load_model()
+    prompt = "What is the capital of France?"
+    response = backend.generate(prompt)
+    print(response)
+    ttft = backend.measure_ttft()
+    print(f"TTFT: {ttft} seconds")

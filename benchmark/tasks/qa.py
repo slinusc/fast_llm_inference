@@ -28,39 +28,51 @@ class QATask:
         return prompts, references
 
     @staticmethod
-    def qa_prompt(example):
-        context = example['context']
-        question = example['question']
+    def qa_prompt(example: dict) -> str:
 
-        prompt_template = (
-            "You are a question answering assistant. Given the context, answer the question. "
-            "If the answer isn't in the context, respond 'I don't know'.\n\n"
+        # 1. System instruction
+        system_message = (
+            "You are a question-answering assistant. Answer in exactly **ONE** line. "
+            "If the answer is not contained in the context, don't answer. "
+            "If it is possible just answer with a single word or a short phrase. "
+        )
 
-            "Here is an example:\n"
-            "Context: The Normans (Norman: Nourmands; French: Normands; Latin: Normanni)...\n"
-            "Question: What is the name of the region the Normans gave their name to?\n"
-            "Answer: Normandy\n\n"
+        # 2. Few-shot demonstration
+        demo_block = (
+            "### EXAMPLES\n"
+            "Context:\n"
+            "The Normans (Norman: Nourmands; French: Normands; Latin: Normanni)…\n"
+            "Question:\n"
+            "What is the name of the region the Normans gave their name to?\n"
+            "Answer:\n"
+            "Normandy\n\n"
+        )
 
-            "Context: {context}\n\n"
-            "Question: {question}\n\n"
+        # 3. Instruction header
+        instruction = (
+            "### INSTRUCTION\n"
+            "Read the context and answer the question.\n\n"
+        )
+
+        # 4. Input header
+        input_block = (
+            "### INPUT\n"
+            f"Context:\n{example['context']}\n\n"
+            f"Question:\n{example['question']}\n\n"
+        )
+
+        # 5. Output header (model writes its answer here)
+        output_block = ("### OUTPUT\n"
             "Answer:"
         )
 
-        return prompt_template.format(context=context, question=question)
-
-    def clean_prediction(self, prediction):
-        """
-        Cleans the raw prediction output from llama.cpp.
-        - Truncates at a new line, 'Context:', or other stop signals.
-        - Normalizes the prediction.
-        """
-        # Split on common stop sequences
-        stop_tokens = ["\n\n", "\nContext:", "Context:", "\nQuestion:", "Question", "\nAnswer:", "Answer:"]
-        for stop in stop_tokens:
-            if stop in prediction:
-                prediction = prediction.split(stop)[-1].strip()
-
-        return prediction
+        return (
+            f"### SYSTEM\n{system_message}\n\n"
+            f"{demo_block}"
+            f"{instruction}"
+            f"{input_block}"
+            f"{output_block}"
+        )
 
     @staticmethod
     def normalize_answer(s):

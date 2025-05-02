@@ -22,53 +22,63 @@ class SummarizationTask:
         return prompts, references
 
     @staticmethod
-    def sum_prompt(article : str) -> str:
-        """
-        Summarize the given `article` into a 2–3 sentence summary (CNN/DailyMail style), using a single demonstration example.
-        """
-        prompt = (
-            "You are a news summarization assistant. Given a full news article, produce a concise and informative summary in 2–3 sentences.\n\n"
-
-            "Example:\n\n"
-
-            "Article:\n"
-            "(CNN) -- The partnership started as a single shop on Oxford Street in London, opened in 1864 by John Lewis. "
-            "Today the partnership is an organization with bases throughout the UK, with supermarkets and department stores, "
-            "employing approximately 67,100 people. All 67,100 permanent staff are Partners who own 26 John Lewis department stores, "
-            "183 Waitrose supermarkets, an online and catalogue business, John Lewis Direct a direct services company - Greenbee, "
-            "three production units and a farm. Every Partner receives the same scale of bonus, based on a fixed percentage of their annual wage. "
-            "The bonus for 2006 was 18% equivalent to 9 weeks pay, which was rolled out for every employee. "
-            "Chairman Sir Stuart Hampson retired at the end of March 2007, his successor is Charlie Mayfield. Hampson's salary for January 26, "
-            "2006 to January 26, 2007 was $1.66 million which included the partnership bonus of $250,000. John Lewis' consolidated revenue for "
-            "the last financial year was $11.4 billion.  E-mail to a friend ."
-
-            "Summary:\n"
-            "John Lewis Partnership began as a shop on London's Oxford street in 1864 .\n"
-            "All 67,100 employees are partners in the organization and own shares ."
-
-            "Now summarize the following article:\n\n"
-
-            f"Article: {article}\n"
+    def sum_prompt(article: str) -> str:
         
+        # 1. System instruction
+        system_message = (
+            "You are a news-summarization assistant. Given a full news article, "
+            "produce a concise and informative summary in maximum 2–3 sentences. "
+            "Your summary should capture the main points and key details of the article. "
+            "Avoid unnecessary details and focus on the most important information. "
+        )
+
+        # 2. Few-shot demonstration
+        demo_block = (
+            "### EXAMPLES\n"
+            "Article:\n"
+            "(CNN) — The partnership started as a single shop on Oxford Street in London, "
+            "opened in 1864 by John Lewis. Today the partnership is an organization with bases "
+            "throughout the UK, with supermarkets and department stores, employing approximately "
+            "67,100 people. All 67,100 permanent staff are Partners who own 26 John Lewis department "
+            "stores, 183 Waitrose supermarkets, an online and catalogue business, John Lewis Direct a "
+            "direct services company – Greenbee, three production units and a farm. Every Partner "
+            "receives the same scale of bonus, based on a fixed percentage of their annual wage. "
+            "The bonus for 2006 was 18% equivalent to 9 weeks pay, which was rolled out for every "
+            "employee. Chairman Sir Stuart Hampson retired at the end of March 2007; his successor is "
+            "Charlie Mayfield. Hampson's salary for January 26, 2006 to January 26, 2007 was $1.66 "
+            "million which included the partnership bonus of $250,000. John Lewis' consolidated "
+            "revenue for the last financial year was $11.4 billion.\n\n"
+            "Summary:\n"
+            "John Lewis Partnership began as a shop on London's Oxford Street in 1864. "
+            "All 67,100 employees are partners in the organization and share in its profits.\n\n"
+        )
+
+        # 3. Instruction header
+        instruction = (
+            "### INSTRUCTION\n"
+            "Summarize the following article in 2–3 sentences.\n\n"
+        )
+
+        # 4. Input header
+        input_block = (
+            "### INPUT\n"
+            f"Article:\n{article}\n\n"
+        )
+
+        # 5. Output header + end sentinel
+        output_and_end = (
+            "### OUTPUT\n"
             "Summary:\n"
         )
 
-        return prompt
+        return (
+            f"### SYSTEM\n{system_message}\n\n"
+            f"{demo_block}"
+            f"{instruction}"
+            f"{input_block}"
+            f"{output_and_end}"
+        )
 
-    @staticmethod
-    def clean_prediction(self, prediction):
-        """
-        Cleans the raw prediction output from llama.cpp.
-        - Truncates at a new line, 'Context:', or other stop signals.
-        - Normalizes the prediction.
-        """
-        # Split on common stop sequences
-        stop_tokens = ["\nArticle:", "Article:", "\nSummary:", "Summary:"]
-        for stop in stop_tokens:
-            if stop in prediction:
-                prediction = prediction.split(stop)[-1].strip()
-
-        return prediction
     
     def quality_metrics(self, generated : str, reference : str) -> float:
         """

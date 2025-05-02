@@ -157,7 +157,7 @@ class ModelBenchmark:
         generation_time = end_time - start_time
 
         return generated_text, generation_time
-    
+
 
     def run(self, samples=100):
         results = []

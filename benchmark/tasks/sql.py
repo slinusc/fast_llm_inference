@@ -43,38 +43,60 @@ class SQLTask:
 
         return "No schema found for that db_id."
 
-    def sql_prompt(self, example):
+    def sql_prompt(self, example: dict) -> str:
+
         question = example["question"]
-        db_id = example["db_id"]
-        column_context = self.get_table_columns(db_id)
+        column_context = self.get_table_columns(example["db_id"])
 
-        prompt_template = (
-            "You are a SQL query generation assistant. Given a natural language question, generate the corresponding SQL query.\n"
-            "Only generate valid SQL statements, no explanations or extra text.\n\n"
-
-            "Here is an example:\n\n"
-            "Question: How many heads of the departments are older than 56?\n\n"
-            "Tables in the database:\n"
-            "Table 'department': columns = Department_ID, Name, Creation, Ranking, Budget_in_Billions, Num_Employees\n"
-            "Table 'head': columns = head_ID, name, born_state, age\n"
-            "Table 'management': columns = department_ID, head_ID, temporary_acting\n\n"
-            "SQL: SELECT count(*) FROM head WHERE age > 56\n\n"
-
-            "Question: {question}\n\n"
-            "Tables in the database:\n"
-            "{column_context}\n\n"
-            "SQL:"
+        # 1. System instruction
+        system_message = (
+            "You are a SQL query generation assistant. Given a natural language question, "
+            "generate the corresponding SQL query. Only generate valid SQL statements—no "
+            "explanations or extra text."
         )
 
-        return prompt_template.format(question=question, column_context=column_context)
+        # 2. Few-shot demonstration
+        demo_block = (
+            "### EXAMPLES\n"
+            "Question:\n"
+            "How many heads of the departments are older than 56?\n\n"
+            "Tables in the database:\n"
+            "Table 'department': columns = Department_ID, Name, Creation, Ranking, "
+            "Budget_in_Billions, Num_Employees\n"
+            "Table 'head':       columns = head_ID, name, born_state, age\n"
+            "Table 'management': columns = department_ID, head_ID, temporary_acting\n\n"
+            "SQL:\n"
+            "SELECT count(*) FROM head WHERE age > 56\n\n"
+        )
 
+        # 3. Instruction header
+        instruction = (
+            "### INSTRUCTION\n"
+            "Generate the SQL statement that answers the question.\n\n"
+        )
 
-    def clean_prediction(self, prediction):
-        stop_tokens = ["\n\n", "\nContext:", "Context:", "\nQuestion:", "SQL:", "\nSQL", "\nAnswer:", "Answer:"]
-        for stop in stop_tokens:
-            if stop in prediction:
-                prediction = prediction.split(stop)[0]
-        return prediction
+        # 4. Input header
+        input_block = (
+            "### INPUT\n"
+            f"Question:\n{question}\n\n"
+            "Tables in the database:\n"
+            f"{column_context}\n\n"
+        )
+
+        # 5. Output header + end sentinel
+        output_and_end = (
+            "### OUTPUT\n"
+            "SQL:\n"
+        )
+
+        return (
+            f"### SYSTEM\n{system_message}\n\n"
+            f"{demo_block}"
+            f"{instruction}"
+            f"{input_block}"
+            f"{output_and_end}"
+        )
+
 
     def quality_metrics(self, generated, reference):
 
