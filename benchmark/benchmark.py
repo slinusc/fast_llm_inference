@@ -1,4 +1,3 @@
-import torch
 from pynvml import (
     nvmlInit,
     nvmlDeviceGetHandleByIndex,

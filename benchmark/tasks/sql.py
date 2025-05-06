@@ -108,12 +108,12 @@ class SQLTask:
             s = re.sub(r'\s+', ' ', s)
             return s.strip()
 
-        def ast_equal(sql1, sql2):
+        def ast_equal(sql1: str, sql2: str) -> int:
             try:
                 tree1 = parse_one(sql1.lower())
                 tree2 = parse_one(sql2.lower())
                 return int(tree1 == tree2)
-            except sqlglot_errors.ParseError:
+            except Exception:  # catches ParseError, TokenError, AttributeError, etc.
                 return 0
 
         def normalized_equal(sql1, sql2):
