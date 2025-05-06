@@ -86,7 +86,7 @@ class QATask:
 
     def compute_exact_match(self, prediction, ground_truths):
         """Exact match: 1 if prediction is in ground_truths, else 0."""
-        prediction = self.normalize_answer(self.clean_prediction(prediction))
+        prediction = self.normalize_answer(prediction)
         ground_truths = [self.normalize_answer(gt) for gt in ground_truths]
 
         return int(prediction in ground_truths)
@@ -119,7 +119,6 @@ class QATask:
         return max(scores)
 
     def quality_metrics(self, generated, reference):
-        generated = self.clean_prediction(generated)
         ref_list = reference if isinstance(reference, list) else [reference]
 
         em = self.compute_exact_match(generated, ref_list)

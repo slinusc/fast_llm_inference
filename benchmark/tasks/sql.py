@@ -119,11 +119,9 @@ class SQLTask:
         def normalized_equal(sql1, sql2):
             return int(normalize_answer(sql1) == normalize_answer(sql2))
 
-        pred = self.clean_prediction(generated)
-
         return {
-            "AST_equal": ast_equal(pred, reference),
-            "Normalized_equal": normalized_equal(pred, reference)
+            "AST_equal": ast_equal(generated, reference),
+            "Normalized_equal": normalized_equal(generated, reference)
         }
 
 

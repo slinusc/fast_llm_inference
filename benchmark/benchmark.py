@@ -8,11 +8,13 @@ from pynvml import (
     nvmlDeviceGetUtilizationRates,
 )
 import time
+import threading   
 import pandas as pd
 import os
 import torch
 
 from benchmark.backends.backend_factory import get_backend
+from benchmark.utils import clean_prediction
 
 
 class ModelBenchmark:
@@ -22,22 +24,17 @@ class ModelBenchmark:
         task="summarization",
         model_name="",
         model_path=None,
-        max_tokens=256,
-        quantization=None,
         verbose=False
     ):
         self.backend = backend
         self.task = task
         self.model_name = model_name
-        self.max_tokens = max_tokens
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.verbose = verbose
 
         self.backend_handler = get_backend(
             name=backend,
             model_path=model_path,
-            quantization=quantization,
-            max_tokens=max_tokens,
             verbose=verbose
         )
         self.backend_handler.load_model()
@@ -50,33 +47,43 @@ class ModelBenchmark:
         else:
             self.handle = None
 
-
     def _get_gpu_memory_usage(self):
-        """Get GPU memory usage in MB."""
+        """Return current GPU memory used (in MB)."""
         if self.device == "cuda" and self.handle:
             info = nvmlDeviceGetMemoryInfo(self.handle)
             return round(info.used / (1024 ** 2), 2)
-        return 0
+        return 0.0
 
     def _get_gpu_power_usage(self):
-        """Get GPU power usage in Watts."""
+        """Return current GPU power draw (in W)."""
         if self.device == "cuda" and self.handle:
-            info = nvmlDeviceGetPowerUsage(self.handle)
-            return round(info / 1000.0, 2)
-        return 0
+            # nvmlDeviceGetPowerUsage returns milliwatts
+            power_mw = nvmlDeviceGetPowerUsage(self.handle)
+            return round(power_mw / 1000.0, 2)
+        return 0.0
 
     def _get_gpu_utilization(self):
-        """Get GPU utilization percentage."""
+        """Return current GPU utilization percentage."""
         if self.device == "cuda" and self.handle:
-            info = nvmlDeviceGetUtilizationRates(self.handle)
-            return round(info.gpu, 2)
+            util = nvmlDeviceGetUtilizationRates(self.handle)
+            return util.gpu  # the .gpu field is a percentage
+        return 0.0
 
+    def _metrics_monitor(self, readings: dict, stop_evt: threading.Event, sample_interval: float):
+            """
+            Background worker: every `sample_interval` seconds, append readings
+            for memory (MB), power (W) and util (%) until `stop_evt` is set.
+            """
+            while not stop_evt.is_set():
+                readings["memory"].append(self._get_gpu_memory_usage())
+                readings["power"].append(self._get_gpu_power_usage())
+                readings["util"].append(self._get_gpu_utilization())
+                time.sleep(sample_interval)
 
     def close(self):
-        """Shutdown NVML (clean-up)."""
-        if self.device == "cuda":
+        if self.device == "cuda" and self.handle:
             nvmlShutdown()
-    
+            self.handle = None  # prevent double‐shutdown
 
     @staticmethod
     def get_model_size_mb(path):
@@ -114,24 +121,37 @@ class ModelBenchmark:
             "Overhead (MB)": mem_usage - model_size if mem_usage > model_size else 0,
         }
 
-    def measure_energy(self, num_tokens, num_sentences, generation_time):
-        """Compute energy consumption based on time/power."""
-        power_watts = self._get_gpu_power_usage()
-        total_energy_wh = (power_watts * generation_time) / 3600
 
-        energy_per_token = (
-            total_energy_wh * 3600 / num_tokens if num_tokens > 0 else 0
-        )
-        energy_per_sentence = (
-            total_energy_wh * 3600 / num_sentences if num_sentences > 0 else 0
-        )
+    def measure_energy(self, num_tokens, num_sentences, generation_time, sample_interval=0.1):
+        """
+        Sample GPU power every `sample_interval` seconds over the duration of
+        `generation_time`, then compute:
+        - Total Energy (Wh)
+        - Energy per Token (J/token)
+        - Energy per Sentence (J/sentence)
+        - Avg Power (W)
+        """
+        readings = []
+        start = time.time()
+        while time.time() - start < generation_time:
+            readings.append(self._get_gpu_power_usage())
+            time.sleep(sample_interval)
+
+        avg_power = sum(readings) / len(readings) if readings else 0.0
+        # Total energy in Wh
+        total_energy_wh = avg_power * generation_time / 3600
+
+        # Convert Wh back to joules for per‐unit metrics: 1 Wh = 3600 J
+        energy_per_token = (total_energy_wh * 3600 / num_tokens) if num_tokens > 0 else 0.0
+        energy_per_sentence = (total_energy_wh * 3600 / num_sentences) if num_sentences > 0 else 0.0
 
         return {
             "Total Energy (Wh)": round(total_energy_wh, 6),
+            "Avg Power (W)": round(avg_power, 2),
             "Energy per Token (J/token)": round(energy_per_token, 6),
             "Energy per Sentence (J/sentence)": round(energy_per_sentence, 6),
-            "Energy per Second (W)": round(power_watts, 6)
         }
+
 
     def measure_gpu_utilization(self):
         """Measure GPU utilization percentage."""
@@ -143,25 +163,18 @@ class ModelBenchmark:
         return {}
 
 
-    def generate_single(self, prompt: str, task=None):
-        """Generates text and measures generation time."""
-
-        if task is None:
-            task = self.task
-
+    def generate(self, prompts, task_type=None):
+        if task_type is None:
+            task_type = self.task
         start_time = time.time()
-
-        generated_text = self.backend_handler.generate(prompt, task_type=task)
-
-        end_time = time.time()
-        generation_time = end_time - start_time
-
-        return generated_text, generation_time
+        generated_text = self.backend_handler.generate(prompts, task_type=task_type)
+        return generated_text, time.time() - start_time
 
 
-    def run(self, samples=100):
+    def run(self, samples=100, batch_size=1, sample_interval=0.1):
         results = []
 
+        # 1) Prepare task
         if self.task == "summarization":
             from benchmark.tasks.summarization import SummarizationTask
             task_ = SummarizationTask()
@@ -174,92 +187,133 @@ class ModelBenchmark:
         else:
             raise ValueError(f"Task {self.task} not supported.")
 
+        # 2) Generate prompts & references
         prompts, references = task_.generate_prompts(num_examples=samples)
 
-        for i, prompt in enumerate(prompts):
+        # 3) Helper to chunk a list
+        def chunker(seq, size):
+            for i in range(0, len(seq), size):
+                yield seq[i : i + size]
+
+        # 4) Loop over prompt‐batches
+        for subbatch_prompts, subbatch_refs in zip(
+            chunker(prompts, batch_size),
+            chunker(references, batch_size)
+        ):
             if self.verbose:
-                print(f"\nEvaluating prompt ({len(prompt)} characters)...")
+                print(f"\nProcessing batch of {len(subbatch_prompts)} prompts...")
 
-            # Step 1: Generate text and measure generation time
-            generated_text, generation_time = self.generate_single(prompt)
+            # 5) Spin up background monitor
+            readings = {"memory": [], "power": [], "util": []}
+            stop_evt = threading.Event()
+            monitor = threading.Thread(
+                target=self._metrics_monitor,
+                args=(readings, stop_evt, sample_interval),
+                daemon=True
+            )
+            monitor.start()
 
-            # Clean the generated text
-            generated_text = task_.clean_prediction(generated_text)
-            if self.verbose:
-                print(f"Generated text:\n{generated_text}\n")
-                print(f"Reference text:\n{references[i]}\n")
+            # 6) Generate the entire subbatch (generate() returns both outputs and elapsed time)
+            generated_texts, generation_time = self.generate(
+                subbatch_prompts,
+                task_type=self.task
+            )
 
-            # Step 2: Count tokens and sentences
-            num_tokens = len(generated_text.split())
-            num_sentences = generated_text.count('.') + 1
+            # 6.a) Clean the whole batch at once
+            cleaned_texts = clean_prediction(generated_texts)
 
-            # Step 3: Latency metrics
-            TTFT = self.backend_handler.measure_ttft()
-            ATL = generation_time / (num_tokens - 1) if num_tokens > 1 else 0
+            # 7) Stop monitoring
+            stop_evt.set()
+            monitor.join()
 
-            latency = {
-                "TTFT": round(TTFT, 4),
-                "ATL": round(ATL, 4),
-                "GL": round(generation_time, 4)
-            }
+            # 8) Aggregate GPU stats
+            avg_mem = sum(readings["memory"]) / len(readings["memory"]) if readings["memory"] else 0.0
+            peak_mem = max(readings["memory"]) if readings["memory"] else 0.0
+            avg_power = sum(readings["power"]) / len(readings["power"]) if readings["power"] else 0.0
+            avg_util  = sum(readings["util"])  / len(readings["util"])  if readings["util"]  else 0.0
 
-            # Step 4: Throughput
-            TPS = num_tokens / generation_time if generation_time > 0 else 0
-            SPS = num_sentences / generation_time if generation_time > 0 else 0
+            total_wh = avg_power * generation_time / 3600.0
+            joules_per_token = lambda n: (total_wh * 3600.0 / n) if n > 0 else 0.0
+            joules_per_sentence = lambda s: (total_wh * 3600.0 / s) if s > 0 else 0.0
 
-            throughput = {
-                "TPS": round(TPS, 2),
-                "SPS": round(SPS, 2)
-            }
+            # 9) Measure TTFT for this batch (if available)
+            TTFT = (
+                self.backend_handler.measure_ttft()
+                if hasattr(self.backend_handler, "measure_ttft")
+                else None
+            )
 
-            # Step 5: Storage & energy
-            storage = self.measure_storage()
-            gpu_utilization = self.measure_gpu_utilization()
-            energy = self.measure_energy(num_tokens, num_sentences, generation_time)
+            # 10) Unpack per-prompt results
+            for prompt, pred, reference in zip(
+                subbatch_prompts, cleaned_texts, subbatch_refs
+            ):
+                if self.verbose:
+                    print(f"\nPrediction:\n{pred}\nRef:\n{reference}\n")
 
-            # Step 6: Quality metrics
-            reference = references[i] if isinstance(references, list) else references
-            quality_metrics = task_.quality_metrics(generated_text, reference)
+                num_tokens = len(pred.split())
+                num_sentences = pred.count('.') + 1
 
-            # Step 7: Collect results
-            result = {
-                "prompt_length": len(prompt),
-                "prompt": prompt,
-                "generated_answer": generated_text,
-                "reference_answer": reference,
-                **latency,
-                **throughput,
-                **storage,
-                **gpu_utilization,
-                **energy,
-                **quality_metrics
-            }
+                ATL = generation_time / num_tokens if num_tokens > 0 else 0
+                TPS = num_tokens / generation_time if generation_time > 0 else 0
+                SPS = num_sentences / generation_time if generation_time > 0 else 0
 
-            results.append(result)
+                latency = {
+                    "TTFT": round(TTFT, 4) if TTFT is not None else None,
+                    "ATL": round(ATL, 4),
+                    "GL":  round(generation_time, 4),
+                }
+                throughput = {
+                    "TPS": round(TPS, 2),
+                    "SPS": round(SPS, 2),
+                }
+                gpu_metrics = {
+                    "Avg GPU Mem (MB)": round(avg_mem, 2),
+                    "Peak GPU Mem (MB)": round(peak_mem, 2),
+                    "Avg GPU Util (%)":  round(avg_util, 2),
+                }
+                energy_metrics = {
+                    "Total Energy (Wh)":             round(total_wh, 6),
+                    "Avg Power (W)":                 round(avg_power, 2),
+                    "Energy per Token (J/token)":    round(joules_per_token(num_tokens), 6),
+                    "Energy per Sentence (J/sentence)": round(joules_per_sentence(num_sentences), 6),
+                }
+                storage = self.measure_storage()
+                quality = task_.quality_metrics(pred, reference)
 
-            if self.verbose:
-                print(f"\nResults for this prompt:\n{result}")
-            
-            torch.cuda.empty_cache()
+                result = {
+                    "prompt_length": len(prompt),
+                    "prompt": prompt,
+                    "generated_answer": pred,
+                    "reference_answer": reference,
+                    **latency,
+                    **throughput,
+                    **gpu_metrics,
+                    **energy_metrics,
+                    **storage,
+                    **quality,
+                }
+                results.append(result)
+                torch.cuda.empty_cache()
 
-        results = pd.DataFrame(results)
+        # 11) Aggregate to a DataFrame and summarize
+        df = pd.DataFrame(results)
+        numeric = df.select_dtypes(include="number")
+        means = numeric.mean()
+        stds = numeric.std()
+        summary = means.combine(stds, lambda m, s: f"{m:.6f} ± {s:.6f}")
 
-        # Compute statistics
-        numeric_results = results.select_dtypes(include='number')
-        averages = numeric_results.mean()
-        stds = numeric_results.std()
-
-        # Combine mean ± std into a formatted string
-        summary = averages.combine(stds, lambda mean, std: f"{mean:.6f} ± {std:.6f}")
-
-        # Print formatted summary
-        print(f"Statistics (mean ± std) for {self.model_name}, with {self.backend}, for task: {self.task}:")
+        print(f"Stats for {self.model_name} on {self.backend}/{self.task}:")
         print(summary)
 
-        results.to_csv(f"/home/ubuntu/fast_llm_inference/results/{self.backend}_{self.model_name}_{self.task}.csv", index=False)
+        # 12) Save results
+        out_path = (
+            f"/home/ubuntu/fast_llm_inference/results/"
+            f"{self.backend}_{self.model_name}_{self.task}.csv"
+        )
+        df.to_csv(out_path, index=False)
 
+        # 13) Cleanup
         self.backend_handler = None
-        if self.device == "cuda":
-            nvmlShutdown()
+        self.close()
 
-        return results
+        return df
