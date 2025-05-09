@@ -1,0 +1,25 @@
+# Core dependencies
+torch
+transformers
+datasets
+evaluate
+pandas
+
+# GPU monitoring
+pynvml
+
+# SQL parsing & AST comparison
+sqlglot
+
+# Backends (all supported)
+vllm
+lmdeploy>=0.2
+llama-cpp-python
+deepspeed
+mii
+
+# Optional formats and speed
+safetensors
+
+# Needed for HuggingFace pipeline with stopping criteria
+accelerate  # pulled by transformers, listed here for completeness
