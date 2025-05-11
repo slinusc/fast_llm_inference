@@ -16,7 +16,7 @@ vllm
 lmdeploy>=0.2
 llama-cpp-python
 deepspeed
-mii
+deepspeed-mii
 
 # Optional formats and speed
 safetensors

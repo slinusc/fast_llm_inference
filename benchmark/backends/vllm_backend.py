@@ -8,7 +8,7 @@ class VLLMBackend(BaseBackend):
         self.model = LLM(
             model=self.model_path,
             trust_remote_code=True,
-            gpu_memory_utilization=0.9,
+            gpu_memory_utilization=0.95,
             max_model_len=4096
         )
 

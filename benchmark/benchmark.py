@@ -229,7 +229,9 @@ class ModelBenchmark:
             avg_mem = sum(readings["memory"]) / len(readings["memory"]) if readings["memory"] else 0.0
             peak_mem = max(readings["memory"]) if readings["memory"] else 0.0
             avg_power = sum(readings["power"]) / len(readings["power"]) if readings["power"] else 0.0
+            peak_power = max(readings["power"]) if readings["power"] else 0.0
             avg_util  = sum(readings["util"])  / len(readings["util"])  if readings["util"]  else 0.0
+            peak_util = max(readings["util"])  if readings["util"]  else 0.0
 
             total_wh = avg_power * generation_time / 3600.0
             joules_per_token = lambda n: (total_wh * 3600.0 / n) if n > 0 else 0.0
@@ -269,10 +271,12 @@ class ModelBenchmark:
                     "Avg GPU Mem (MB)": round(avg_mem, 2),
                     "Peak GPU Mem (MB)": round(peak_mem, 2),
                     "Avg GPU Util (%)":  round(avg_util, 2),
+                    "Peak GPU Util (%)": round(peak_util, 2),
                 }
                 energy_metrics = {
                     "Total Energy (Wh)":             round(total_wh, 6),
                     "Avg Power (W)":                 round(avg_power, 2),
+                    "Peak Power (W)":                round(peak_power, 2),
                     "Energy per Token (J/token)":    round(joules_per_token(num_tokens), 6),
                     "Energy per Sentence (J/sentence)": round(joules_per_sentence(num_sentences), 6),
                 }
