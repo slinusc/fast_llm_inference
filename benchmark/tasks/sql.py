@@ -126,8 +126,8 @@ class SQLTask:
 
 
 if __name__ == "__main__":
-    task = SQLTask(num_examples=3)
-    prompts, references = task.generate_prompts()
+    task = SQLTask(tables_path="/home/rag/fast_llm_inference/benchmark/tasks/tables.json")
+    prompts, references = task.generate_prompts(num_examples=3)
     for i in range(3):
         print(f"Prompt {i+1}:")
         print(prompts[i])

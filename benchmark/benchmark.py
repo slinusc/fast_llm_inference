@@ -23,11 +23,13 @@ class ModelBenchmark:
         task="summarization",
         model_name="",
         model_path=None,
+        base_path="/home/ubuntu/fast_llm_inference/",
         verbose=False
     ):
         self.backend = backend
         self.task = task
         self.model_name = model_name
+        self.base_path = base_path
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.verbose = verbose
 
@@ -182,7 +184,7 @@ class ModelBenchmark:
             task_ = QATask()
         elif self.task == "sql":
             from benchmark.tasks.sql import SQLTask
-            task_ = SQLTask()
+            task_ = SQLTask(tables_path=self.base_path + "benchmark/tasks/tables.json")
         else:
             raise ValueError(f"Task {self.task} not supported.")
 
@@ -310,8 +312,7 @@ class ModelBenchmark:
 
         # 12) Save results
         out_path = (
-            f"/home/ubuntu/fast_llm_inference/results/"
-            f"{self.backend}_{self.model_name}_{self.task}.csv"
+            self.base_path + "results/" + f"{self.backend}_{self.model_name}_{self.task}.csv"
         )
         df.to_csv(out_path, index=False)
 

@@ -4,6 +4,7 @@ transformers
 datasets
 evaluate
 pandas
+bitsandbytes
 
 # GPU monitoring
 pynvml

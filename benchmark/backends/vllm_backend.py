@@ -7,9 +7,7 @@ class VLLMBackend(BaseBackend):
     def load_model(self):
         self.model = LLM(
             model=self.model_path,
-            trust_remote_code=True,
-            gpu_memory_utilization=0.95,
-            max_model_len=4096
+            trust_remote_code=True
         )
 
 
