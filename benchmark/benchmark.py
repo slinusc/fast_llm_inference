@@ -315,7 +315,7 @@ class ModelBenchmark:
 
         # 12) Save results
         out_path = (
-            self.base_path + "results/" + f"{self.backend}_{self.model_name}_{self.task}.csv"
+            self.base_path + "/results/" + f"{self.backend}_{self.model_name}_{self.task}.csv"
         )
         df.to_csv(out_path, index=False)
 
@@ -326,14 +326,22 @@ class ModelBenchmark:
         return df
 
     def _run_server(self,
-                num_requests: int = 100,
-                requests_per_sec: float = None,
-                sample_interval: float = 0.1):
-
+                run_time: float,
+                requests_per_sec: float,
+                sample_interval: float = 0.1,
+                max_batch_size: int = None):
+        """
+        Server (bucketed) Poisson simulation over a fixed run_time (s).
+        - requests_per_sec: target λ (requests/sec)
+        - sample_interval: metrics polling interval (s)
+        - max_batch_size: None or integer cap on prompts per batch
+        """
+        import time, threading, numpy as np, pandas as pd, torch
+        from benchmark.utils import clean_prediction
 
         results = []
 
-        # 1) Prepare the same task factory you use in _run_basic
+        # 1) Task setup (same as _run_basic)
         if self.task == "summarization":
             from benchmark.tasks.summarization import SummarizationTask
             task_ = SummarizationTask()
@@ -346,32 +354,43 @@ class ModelBenchmark:
         else:
             raise ValueError(f"Task {self.task} not supported.")
 
-        # 2) Pull prompts & refs
+        # 2) Pre‐sample enough arrivals, then truncate to run_time
+        est_n = int(requests_per_sec * run_time * 2) + 10
+        inter_arrivals = np.random.exponential(scale=1.0/requests_per_sec, size=est_n)
+        arrival_times = np.cumsum(inter_arrivals)
+        arrival_times = arrival_times[arrival_times <= run_time]
+        num_requests = len(arrival_times)
+
+        # 3) Generate exactly as many prompts as requests
         prompts, references = task_.generate_prompts(num_examples=num_requests)
 
-        # 3) Sample inter-arrival times and get absolute offsets
-        inter_arrivals = np.random.exponential(scale=1.0/requests_per_sec, size=num_requests)
-        arrival_times = np.cumsum(inter_arrivals)
-
         # 4) Simulation state
-        queue = []                      # holds tuples (idx, prompt, ref, scheduled_ts)
-        next_idx = 0
         t0 = time.time()
-        offset = 0.0
+        offset = 0.0            # current simulated time (s) since start
+        next_idx = 0            # next arrival index
+        queue = []              # holds (idx, prompt, ref, sched_ts)
 
-        # 5) Loop until everyone’s processed
-        while next_idx < num_requests or queue:
-            # 5.a) If nothing queued, wait for next arrival
-            if not queue:
+
+        # Time to first token (TTFT) for this batch
+        TTFT = (
+            self.backend_handler.measure_ttft()
+            if hasattr(self.backend_handler, "measure_ttft")
+            else None
+        )
+
+        # 5) Loop until time is up AND queue is drained
+        while offset < run_time or queue:
+            # a) If queue empty, wait for next arrival
+            if not queue and next_idx < num_requests:
                 sched = arrival_times[next_idx]
-                wait = t0 + sched - time.time()
-                if wait > 0:
-                    time.sleep(wait)
+                to_wait = t0 + sched - time.time()
+                if to_wait > 0:
+                    time.sleep(to_wait)
                 offset = sched
                 queue.append((next_idx, prompts[next_idx], references[next_idx], sched))
                 next_idx += 1
 
-            # 5.b) Drain any other arrivals that happened “while idle”
+            # b) Drain any arrivals that occurred while idle
             while next_idx < num_requests and arrival_times[next_idx] <= offset:
                 queue.append((next_idx,
                             prompts[next_idx],
@@ -379,7 +398,17 @@ class ModelBenchmark:
                             arrival_times[next_idx]))
                 next_idx += 1
 
-            # 6) Spin up your monitor
+            # c) Snapshot queue size & cap your batch
+            queue_size = len(queue)
+            batch_entries = (
+                queue if max_batch_size is None
+                else queue[:max_batch_size]
+            )
+            batch_size = len(batch_entries)
+            # remove them from queue
+            queue = queue[batch_size:]
+
+            # d) Start monitor
             readings = {"memory": [], "power": [], "util": []}
             stop_evt = threading.Event()
             mon = threading.Thread(
@@ -389,73 +418,77 @@ class ModelBenchmark:
             )
             mon.start()
 
-            # 7) Batch-generate everything in queue
-            batch_prompts = [q[1] for q in queue]
+            # e) Run your existing batch‐generate
+            batch_prompts = [e[1] for e in batch_entries]
             outputs, gen_time = self.generate(batch_prompts, task_type=self.task)
             cleaned = clean_prediction(outputs)
 
-            # 8) Stop monitor
+            # f) Stop monitor
             stop_evt.set()
             mon.join()
 
-            # 9) Compute the same GPU/energy stats you do in _run_basic
+            # g) Aggregate GPU/energy stats (same as before)
             avg_mem   = sum(readings["memory"]) / len(readings["memory"]) if readings["memory"] else 0.0
             peak_mem  = max(readings["memory"]) if readings["memory"] else 0.0
             avg_power = sum(readings["power"])  / len(readings["power"])  if readings["power"]  else 0.0
             peak_power= max(readings["power"])  if readings["power"]  else 0.0
             avg_util  = sum(readings["util"])   / len(readings["util"])   if readings["util"]   else 0.0
             peak_util = max(readings["util"])   if readings["util"]   else 0.0
+            total_wh  = avg_power * gen_time / 3600.0
 
-            total_wh = avg_power * gen_time / 3600.0
-            joules_per_token = lambda n: (total_wh * 3600.0 / n) if n > 0 else 0.0
-            joules_per_sentence = lambda s: (total_wh * 3600.0 / s) if s > 0 else 0.0
 
-            TTFT = (
-                self.backend_handler.measure_ttft()
-                if hasattr(self.backend_handler, "measure_ttft")
-                else None
-            )
+            # i) Unpack per‐request results
+            for (idx, _, ref, sched_ts), pred in zip(batch_entries, cleaned):
+                start_ts     = offset
+                wait_time    = start_ts - sched_ts
+                response_time= wait_time + gen_time
 
-            # 10) Unpack per-prompt results exactly like in _run_basic
-            for (idx, _, ref, sched_ts), pred in zip(queue, cleaned):
                 num_tokens    = len(pred.split())
                 num_sentences = pred.count(".") + 1
-
                 ATL = gen_time / num_tokens if num_tokens > 0 else 0
                 TPS = num_tokens / gen_time if gen_time > 0 else 0
                 SPS = num_sentences / gen_time if gen_time > 0 else 0
 
                 result = {
-                    "request_idx":      idx,
-                    "scheduled_ts":     round(sched_ts,  4),
-                    "start_ts":         round(offset,    4),
-                    "TTFT":             round(TTFT,      4) if TTFT is not None else None,
-                    "ATL":              round(ATL,       4),
-                    "GL":               round(gen_time,  4),
-                    "TPS":              round(TPS,       2),
-                    "SPS":              round(SPS,       2),
-                    "Avg GPU Mem (MB)": round(avg_mem,   2),
-                    "Peak GPU Mem (MB)":round(peak_mem,  2),
-                    "Avg GPU Util (%)": round(avg_util,  2),
-                    "Peak GPU Util (%)":round(peak_util, 2),
-                    "Total Energy (Wh)":             round(total_wh,             6),
-                    "Avg Power (W)":                 round(avg_power,            2),
-                    "Peak Power (W)":                round(peak_power,           2),
-                    "Energy per Token (J/token)":    round(joules_per_token(num_tokens),    6),
-                    "Energy per Sentence (J/sentence)": round(joules_per_sentence(num_sentences),6),
+                    # new metrics
+                    "queue_size":      queue_size,
+                    "batch_size":      batch_size,
+                    "wait_time":       round(wait_time, 4),
+                    "response_time":   round(response_time, 4),
+
+                    # timing
+                    "scheduled_ts":    round(sched_ts, 4), # arrival time
+                    "start_ts":        round(start_ts, 4),
+                    "GL":              round(gen_time, 4),
+                    "ATL":             round(ATL, 4),
+
+                    # throughput
+                    "TTFT":            round(TTFT, 4) if TTFT is not None else None,
+                    "TPS":             round(TPS, 2),
+                    "SPS":             round(SPS, 2),
+
+                    # GPU & energy
+                    "Avg GPU Mem (MB)":    round(avg_mem, 2),
+                    "Peak GPU Mem (MB)":   round(peak_mem, 2),
+                    "Avg GPU Util (%)":    round(avg_util, 2),
+                    "Peak GPU Util (%)":   round(peak_util, 2),
+                    "Total Energy (Wh)":   round(total_wh, 6),
+                    "Avg Power (W)":       round(avg_power, 2),
+                    "Peak Power (W)":      round(peak_power, 2),
+                    "Energy per Token (J/token)": 
+                                        round((total_wh * 3600.0 / num_tokens) if num_tokens>0 else 0, 6),
+
+                    # storage & quality (unchanged)
                     **self.measure_storage(),
                     **task_.quality_metrics(pred, ref),
                 }
                 results.append(result)
                 torch.cuda.empty_cache()
 
-            # 11) Advance our “clock” and collect arrivals during generation
+            # j) Advance our clock by the batch’s gen_time
             offset += gen_time
-            wait = t0 + offset - time.time()
-            if wait > 0:
-                time.sleep(wait)
 
-            queue = []
+            # k) Then let any arrivals during generation queue up
             while next_idx < num_requests and arrival_times[next_idx] <= offset:
                 queue.append((next_idx,
                             prompts[next_idx],
@@ -463,22 +496,22 @@ class ModelBenchmark:
                             arrival_times[next_idx]))
                 next_idx += 1
 
-        # 12) Build DataFrame, print summary & save (just like _run_basic)
+        # 6) Finalize DataFrame, print & save (same as _run_basic)
         df = pd.DataFrame(results).sort_values("scheduled_ts").reset_index(drop=True)
         numeric = df.select_dtypes(include="number")
         means, stds = numeric.mean(), numeric.std()
         summary = means.combine(stds, lambda m, s: f"{m:.6f} ± {s:.6f}")
-
         print(f"Stats for {self.model_name} on {self.backend}/{self.task} (server‐bucket):")
         print(summary)
 
         out_path = (
-            self.base_path + "results/" +
-            f"{self.backend}_{self.model_name}_{self.task}_server_bucket.csv"
+            self.base_path + "/results/" +
+            f"{self.backend}_{self.model_name}_{self.task}_server.csv"
         )
+
         df.to_csv(out_path, index=False)
 
-        # 13) Cleanup
+        # Cleanup
         self.backend_handler = None
         self.close()
 
@@ -490,12 +523,12 @@ class ModelBenchmark:
         batch_size: int = 1,
         sample_interval: float = 0.1,
         scenario: str = "batch",
-        requests_per_sec: float = None
+        requests_per_sec: float = None, # only used in server mode
+        run_time: float = None,         # only used in server mode
+        max_batch_size: int = 128       # only used in server mode
        ) -> pd.DataFrame:
 
-
         if scenario == "single":
-            # exactly one prompt at a time
             return self._run_basic(
                 samples=samples,
                 batch_size=1,
@@ -503,7 +536,6 @@ class ModelBenchmark:
             )
 
         elif scenario == "batch":
-            # fixed-size offline batches
             return self._run_basic(
                 samples=samples,
                 batch_size=batch_size,
@@ -511,14 +543,16 @@ class ModelBenchmark:
             )
 
         elif scenario == "server":
-            # bucketed arrivals: queue up incoming prompts and
-            # hand them off to _run_server in one batch each time
             assert requests_per_sec is not None, \
                 "Must set requests_per_sec in server mode"
+            assert run_time is not None, \
+                "Must set run_time in seconds in server mode"
+            # **don’t** pass samples here — _run_server will sample arrivals until run_time
             return self._run_server(
-                num_requests=samples,
+                run_time=run_time,
                 requests_per_sec=requests_per_sec,
-                sample_interval=sample_interval
+                sample_interval=sample_interval,
+                max_batch_size=max_batch_size
             )
 
         else:
