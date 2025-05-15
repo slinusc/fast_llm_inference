@@ -14,10 +14,16 @@ import torch
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import torch
+from typing import Optional
+import random
 
 from benchmark.backends.backend_factory import get_backend
 from benchmark.utils import clean_prediction
 
+DEFAULT_SEED = 42
+random.seed(DEFAULT_SEED)
+np.random.seed(DEFAULT_SEED)
+torch.manual_seed(DEFAULT_SEED)
 
 class ModelBenchmark:
     def __init__(
@@ -313,12 +319,6 @@ class ModelBenchmark:
         print(f"Stats for {self.model_name} on {self.backend}/{self.task}:")
         print(summary)
 
-        # 12) Save results
-        out_path = (
-            self.base_path + "/results/" + f"{self.backend}_{self.model_name}_{self.task}.csv"
-        )
-        df.to_csv(out_path, index=False)
-
         # 13) Cleanup
         self.backend_handler = None
         self.close()
@@ -326,22 +326,17 @@ class ModelBenchmark:
         return df
 
     def _run_server(self,
-                run_time: float,
-                requests_per_sec: float,
-                sample_interval: float = 0.1,
-                max_batch_size: int = None):
+                   run_time: float,
+                   requests_per_sec: float,
+                   sample_interval: float = 0.1,
+                   max_batch_size: Optional[int] = None,
+                   quality_metric: bool = False) -> pd.DataFrame:
         """
-        Server (bucketed) Poisson simulation over a fixed run_time (s).
-        - requests_per_sec: target λ (requests/sec)
-        - sample_interval: metrics polling interval (s)
-        - max_batch_size: None or integer cap on prompts per batch
+        Server Poisson simulation over a fixed run_time (s), stopping based
+        on real wall-clock time rather than simulated offset. Returns a DataFrame.
+        Each record will include a batch_id for grouping.
         """
-        import time, threading, numpy as np, pandas as pd, torch
-        from benchmark.utils import clean_prediction
-
-        results = []
-
-        # 1) Task setup (same as _run_basic)
+        # 1) Task setup
         if self.task == "summarization":
             from benchmark.tasks.summarization import SummarizationTask
             task_ = SummarizationTask()
@@ -350,193 +345,139 @@ class ModelBenchmark:
             task_ = QATask()
         elif self.task == "sql":
             from benchmark.tasks.sql import SQLTask
-            task_ = SQLTask(tables_path=self.base_path + "benchmark/tasks/tables.json")
+            task_ = SQLTask(tables_path=self.base_path + "/benchmark/tasks/tables.json")
         else:
             raise ValueError(f"Task {self.task} not supported.")
 
-        # 2) Pre‐sample enough arrivals, then truncate to run_time
+        # 2) Pre-sample Poisson arrivals
         est_n = int(requests_per_sec * run_time * 2) + 10
         inter_arrivals = np.random.exponential(scale=1.0/requests_per_sec, size=est_n)
         arrival_times = np.cumsum(inter_arrivals)
         arrival_times = arrival_times[arrival_times <= run_time]
         num_requests = len(arrival_times)
 
-        # 3) Generate exactly as many prompts as requests
+        # 3) Generate prompts & refs
         prompts, references = task_.generate_prompts(num_examples=num_requests)
 
         # 4) Simulation state
-        t0 = time.time()
-        offset = 0.0            # current simulated time (s) since start
-        next_idx = 0            # next arrival index
-        queue = []              # holds (idx, prompt, ref, sched_ts)
-
-
-        # Time to first token (TTFT) for this batch
+        t0          = time.time()
+        deadline    = t0 + run_time
+        next_idx    = 0
+        queue       = []
+        batch_id    = 0
         TTFT = (
             self.backend_handler.measure_ttft()
-            if hasattr(self.backend_handler, "measure_ttft")
-            else None
+            if hasattr(self.backend_handler, "measure_ttft") else None
         )
+        results     = []
 
-        # 5) Loop until time is up AND queue is drained
-        while offset < run_time or queue:
-            # a) If queue empty, wait for next arrival
-            if not queue and next_idx < num_requests:
-                sched = arrival_times[next_idx]
-                to_wait = t0 + sched - time.time()
-                if to_wait > 0:
-                    time.sleep(to_wait)
-                offset = sched
-                queue.append((next_idx, prompts[next_idx], references[next_idx], sched))
-                next_idx += 1
-
-            # b) Drain any arrivals that occurred while idle
+        # 5) Real-time loop
+        while time.time() < deadline:
+            offset = time.time() - t0
+            # a) Enqueue arrivals
             while next_idx < num_requests and arrival_times[next_idx] <= offset:
                 queue.append((next_idx,
-                            prompts[next_idx],
-                            references[next_idx],
-                            arrival_times[next_idx]))
+                              prompts[next_idx],
+                              references[next_idx],
+                              arrival_times[next_idx]))
                 next_idx += 1
 
-            # c) Snapshot queue size & cap your batch
-            queue_size = len(queue)
-            batch_entries = (
-                queue if max_batch_size is None
-                else queue[:max_batch_size]
-            )
-            batch_size = len(batch_entries)
-            # remove them from queue
-            queue = queue[batch_size:]
+            if queue:
+                # increment batch counter
+                batch_id += 1
+                # pull batch
+                batch = queue if max_batch_size is None else queue[:max_batch_size]
+                queue = queue[len(batch):]
 
-            # d) Start monitor
-            readings = {"memory": [], "power": [], "util": []}
-            stop_evt = threading.Event()
-            mon = threading.Thread(
-                target=self._metrics_monitor,
-                args=(readings, stop_evt, sample_interval),
-                daemon=True
-            )
-            mon.start()
+                # start telemetry monitor
+                readings = {"memory": [], "power": [], "util": []}
+                evt = threading.Event()
+                monitor = threading.Thread(
+                    target=self._metrics_monitor,
+                    args=(readings, evt, sample_interval),
+                    daemon=True
+                )
+                monitor.start()
 
-            # e) Run your existing batch‐generate
-            batch_prompts = [e[1] for e in batch_entries]
-            outputs, gen_time = self.generate(batch_prompts, task_type=self.task)
-            cleaned = clean_prediction(outputs)
+                # run generation
+                prompts_batch = [e[1] for e in batch]
+                outputs, gen_time = self.generate(prompts_batch, task_type=self.task)
+                cleaned = clean_prediction(outputs)
 
-            # f) Stop monitor
-            stop_evt.set()
-            mon.join()
+                # stop monitor
+                evt.set()
+                monitor.join()
 
-            # g) Aggregate GPU/energy stats (same as before)
-            avg_mem   = sum(readings["memory"]) / len(readings["memory"]) if readings["memory"] else 0.0
-            peak_mem  = max(readings["memory"]) if readings["memory"] else 0.0
-            avg_power = sum(readings["power"])  / len(readings["power"])  if readings["power"]  else 0.0
-            peak_power= max(readings["power"])  if readings["power"]  else 0.0
-            avg_util  = sum(readings["util"])   / len(readings["util"])   if readings["util"]   else 0.0
-            peak_util = max(readings["util"])   if readings["util"]   else 0.0
-            total_wh  = avg_power * gen_time / 3600.0
+                # aggregate some metrics
+                avg_power = sum(readings["power"]) / len(readings["power"]) if readings["power"] else 0
+                avg_mem   = sum(readings["memory"]) / len(readings["memory"]) if readings["memory"] else 0
+                avg_util  = sum(readings["util"]) / len(readings["util"]) if readings["util"] else 0
 
+                # record per-request
+                for (idx, _, ref, sched_ts), pred in zip(batch, cleaned):
+                    start_ts      = offset
+                    wait_time     = start_ts - sched_ts
+                    response_time = wait_time + gen_time
+                    num_tokens    = len(pred.split())
+                    num_sentences = pred.count(".") + 1
+                    ATL = gen_time / num_tokens if num_tokens > 0 else 0
+                    TPS = num_tokens / gen_time if gen_time > 0 else 0
+                    SPS = num_sentences / gen_time if gen_time > 0 else 0
+                    quality = task_.quality_metrics(pred, ref) if quality_metric else {}
 
-            # i) Unpack per‐request results
-            for (idx, _, ref, sched_ts), pred in zip(batch_entries, cleaned):
-                start_ts     = offset
-                wait_time    = start_ts - sched_ts
-                response_time= wait_time + gen_time
+                    results.append({
+                        "batch_id":              batch_id,
+                        "prompt_length":         len(prompts[idx]),
+                        "prompt":                prompts[idx],
+                        "generated_answer":      pred,
+                        "reference_answer":      ref,
+                        "scheduled_ts":          round(sched_ts, 4),
+                        "start_ts":              round(start_ts, 4),
+                        "wait_time":             round(wait_time, 4),
+                        "response_time":         round(response_time, 4),
+                        "gen_latency":           round(gen_time, 4),
+                        "ATL":                   round(ATL, 4),
+                        "TTFT":                  round(TTFT, 4) if TTFT is not None else None,
+                        "TPS":                   round(TPS, 2),
+                        "SPS":                   round(SPS, 2),
+                        "Avg GPU Mem (MB)":      round(avg_mem, 2),
+                        "Avg GPU Util (%)":      round(avg_util, 2),
+                        "Avg Power (W)":         round(avg_power, 2),
+                        **self.measure_storage(),
+                        **quality
+                    })
+                    torch.cuda.empty_cache()
+            else:
+                time.sleep(sample_interval)
 
-                num_tokens    = len(pred.split())
-                num_sentences = pred.count(".") + 1
-                ATL = gen_time / num_tokens if num_tokens > 0 else 0
-                TPS = num_tokens / gen_time if gen_time > 0 else 0
-                SPS = num_sentences / gen_time if gen_time > 0 else 0
-
-                result = {
-                    # new metrics
-                    "queue_size":      queue_size,
-                    "batch_size":      batch_size,
-                    "wait_time":       round(wait_time, 4),
-                    "response_time":   round(response_time, 4),
-
-                    # timing
-                    "scheduled_ts":    round(sched_ts, 4), # arrival time
-                    "start_ts":        round(start_ts, 4),
-                    "GL":              round(gen_time, 4),
-                    "ATL":             round(ATL, 4),
-
-                    # throughput
-                    "TTFT":            round(TTFT, 4) if TTFT is not None else None,
-                    "TPS":             round(TPS, 2),
-                    "SPS":             round(SPS, 2),
-
-                    # GPU & energy
-                    "Avg GPU Mem (MB)":    round(avg_mem, 2),
-                    "Peak GPU Mem (MB)":   round(peak_mem, 2),
-                    "Avg GPU Util (%)":    round(avg_util, 2),
-                    "Peak GPU Util (%)":   round(peak_util, 2),
-                    "Total Energy (Wh)":   round(total_wh, 6),
-                    "Avg Power (W)":       round(avg_power, 2),
-                    "Peak Power (W)":      round(peak_power, 2),
-                    "Energy per Token (J/token)": 
-                                        round((total_wh * 3600.0 / num_tokens) if num_tokens>0 else 0, 6),
-
-                    # storage & quality (unchanged)
-                    **self.measure_storage(),
-                    **task_.quality_metrics(pred, ref),
-                }
-                results.append(result)
-                torch.cuda.empty_cache()
-
-            # j) Advance our clock by the batch’s gen_time
-            offset += gen_time
-
-            # k) Then let any arrivals during generation queue up
-            while next_idx < num_requests and arrival_times[next_idx] <= offset:
-                queue.append((next_idx,
-                            prompts[next_idx],
-                            references[next_idx],
-                            arrival_times[next_idx]))
-                next_idx += 1
-
-        # 6) Finalize DataFrame, print & save (same as _run_basic)
-        df = pd.DataFrame(results).sort_values("scheduled_ts").reset_index(drop=True)
-        numeric = df.select_dtypes(include="number")
-        means, stds = numeric.mean(), numeric.std()
-        summary = means.combine(stds, lambda m, s: f"{m:.6f} ± {s:.6f}")
-        print(f"Stats for {self.model_name} on {self.backend}/{self.task} (server‐bucket):")
-        print(summary)
-
-        out_path = (
-            self.base_path + "/results/" +
-            f"{self.backend}_{self.model_name}_{self.task}_server.csv"
-        )
-
-        df.to_csv(out_path, index=False)
-
-        # Cleanup
-        self.backend_handler = None
-        self.close()
-
+        # 6) Build DataFrame and return
+        df = pd.DataFrame(results).sort_values(["batch_id", "scheduled_ts"]).reset_index(drop=True)
         return df
 
 
     def run(self,
-        samples: int = 100,
-        batch_size: int = 1,
-        sample_interval: float = 0.1,
-        scenario: str = "batch",
-        requests_per_sec: float = None, # only used in server mode
-        run_time: float = None,         # only used in server mode
-        max_batch_size: int = 128       # only used in server mode
-       ) -> pd.DataFrame:
-
+            samples: int = 100,
+            batch_size: int = 1,
+            sample_interval: float = 0.1,
+            scenario: str = "batch",
+            requests_per_sec: Optional[float] = None,
+            run_time: Optional[float] = None,
+            max_batch_size: int = 128,
+            export_path: Optional[str] = None,
+            quality_metric: bool = False
+           ) -> pd.DataFrame:
+        """
+        Dispatch to the appropriate execution method, then handle exporting.
+        """
         if scenario == "single":
-            return self._run_basic(
+            df = self._run_basic(
                 samples=samples,
                 batch_size=1,
                 sample_interval=sample_interval
             )
 
         elif scenario == "batch":
-            return self._run_basic(
+            df = self._run_basic(
                 samples=samples,
                 batch_size=batch_size,
                 sample_interval=sample_interval
@@ -547,14 +488,32 @@ class ModelBenchmark:
                 "Must set requests_per_sec in server mode"
             assert run_time is not None, \
                 "Must set run_time in seconds in server mode"
-            # **don’t** pass samples here — _run_server will sample arrivals until run_time
-            return self._run_server(
+            df = self._run_server(
                 run_time=run_time,
                 requests_per_sec=requests_per_sec,
                 sample_interval=sample_interval,
-                max_batch_size=max_batch_size
+                max_batch_size=max_batch_size,
+                quality_metric=quality_metric
             )
 
         else:
             raise ValueError(f"Unknown scenario '{scenario}'. "
-                            "Choose 'single', 'batch', or 'server'.")
+                             "Choose 'single', 'batch', or 'server'.")
+
+        # Exporting logic: save DataFrame if path provided or default
+        import os
+        if export_path:
+            out_path = export_path
+        else:
+            # construct a default filename
+            out_path = (
+                f"{self.base_path}/results/"
+                f"{self.backend}_{self.model_name}_{self.task}_"
+                f"{scenario}"
+                + (f"_{int(requests_per_sec)}rps" if scenario == 'server' else '')
+                + (f"_{batch_size}bs" if scenario == 'batch' else '')
+                + ".csv"
+            )
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        df.to_csv(out_path, index=False)
+        return df
