@@ -193,7 +193,7 @@ class ModelBenchmark:
             task_ = QATask()
         elif self.task == "sql":
             from benchmark.tasks.sql import SQLTask
-            task_ = SQLTask(tables_path=self.base_path + "benchmark/tasks/tables.json")
+            task_ = SQLTask(tables_path=self.base_path + "/benchmark/tasks/tables.json")
         else:
             raise ValueError(f"Task {self.task} not supported.")
 
