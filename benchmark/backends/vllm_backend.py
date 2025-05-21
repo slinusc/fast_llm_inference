@@ -51,7 +51,7 @@ class VLLMBackend(BaseBackend):
             "qa":             32,
             "sql":            64,
             "summarization": 256
-        }.get(task_type, self.max_tokens)
+        }.get(task_type, 256)
 
         # Configure SamplingParams
         if perplexity:

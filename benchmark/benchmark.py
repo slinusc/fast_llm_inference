@@ -1,3 +1,12 @@
+import time
+import threading   
+import pandas as pd
+import os
+import torch
+import numpy as np
+import torch
+from typing import Optional
+import random
 from pynvml import (
     nvmlInit,
     nvmlDeviceGetHandleByIndex,
@@ -6,19 +15,9 @@ from pynvml import (
     nvmlShutdown,
     nvmlDeviceGetUtilizationRates,
 )
-import time
-import threading   
-import pandas as pd
-import os
-import torch
-import numpy as np
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import torch
-from typing import Optional
-import random
 
 from benchmark.backends.backend_factory import get_backend
-from benchmark.utils import clean_prediction
+from benchmark.utils import clean_prediction, tok_cnt, sent_cnt, chunker
 
 DEFAULT_SEED = 42
 random.seed(DEFAULT_SEED)
@@ -29,26 +28,17 @@ class ModelBenchmark:
     def __init__(
         self,
         backend="huggingface",
-        task="summarization",
         model_name="",
         model_path=None,
         base_path="/home/ubuntu/fast_llm_inference/",
         verbose=False
     ):
         self.backend = backend
-        self.task = task
+        self.model_path = model_path
         self.model_name = model_name
         self.base_path = base_path
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.verbose = verbose
-
-        self.backend_handler = get_backend(
-            name=backend,
-            model_path=model_path,
-            verbose=verbose
-        )
-        self.backend_handler.load_model()
-        self.model_size = self.get_model_size_mb(model_path)
 
         # GPU monitoring
         if torch.cuda.is_available():
@@ -173,47 +163,76 @@ class ModelBenchmark:
         return {}
 
 
-    def generate(self, prompts, task_type=None):
-        if task_type is None:
-            task_type = self.task
+    def generate(self, prompts, task_type):
         start_time = time.time()
         generated_text = self.backend_handler.generate(prompts, task_type=task_type)
         return generated_text, time.time() - start_time
 
 
-    def _run_basic(self, samples=100, batch_size=1, sample_interval=0.1):
-        results = []
+    def _run_batch(self, task, samples=100, batch_size=1, sample_interval=0.1):
+        # ─── 0) Run-level metadata ────────────────────────────────────────
 
-        # 1) Prepare task
-        if self.task == "summarization":
+        # 0.a) startup backend
+        t0 = time.time()
+        self.backend_handler = get_backend(
+            name=self.backend,
+            model_path=self.model_path,
+            verbose=self.verbose
+        )
+        startup_time = time.time() - t0
+
+        # 0.b) Load once and time it
+        t0 = time.time()
+        self.backend_handler.load_model()
+        load_model_time = time.time() - t0
+
+        # 0.c) Model size
+        self.model_size = self.get_model_size_mb(self.model_path)
+
+        # 0.d) Warmup
+        self.backend_handler.generate(["What is the purpose of life?"] * 10)
+
+        # 0.e) TTFT
+        ttft = (self.backend_handler.measure_ttft()
+                if hasattr(self.backend_handler, "measure_ttft") else None)
+        cold_start = startup_time + load_model_time + (ttft or 0)
+
+        metadata = {
+            "startup_time_sec": round(startup_time, 4),
+            "load_model_time_sec": round(load_model_time, 4),
+            "ttft_sec":         round(ttft, 4) if ttft is not None else None,
+            "cold_start_sec":   round(cold_start, 4),
+            "scenario":         "batch",
+            "batch_size":       batch_size,
+            "num_queries":      samples,
+            "model_name":       self.model_name,
+            "backend":          self.backend,
+        }
+        metadata_df = pd.DataFrame([metadata])
+
+        # ─── 1) Prepare task & prompts ────────────────────────────────────
+        if task == "summarization":
             from benchmark.tasks.summarization import SummarizationTask
             task_ = SummarizationTask()
-        elif self.task == "qa":
+        elif task == "qa":
             from benchmark.tasks.qa import QATask
             task_ = QATask()
-        elif self.task == "sql":
+        elif task == "sql":
             from benchmark.tasks.sql import SQLTask
             task_ = SQLTask(tables_path=self.base_path + "/benchmark/tasks/tables.json")
         else:
-            raise ValueError(f"Task {self.task} not supported.")
-
-        # 2) Generate prompts & references
+            raise ValueError(f"Task {task!r} not supported.")
         prompts, references = task_.generate_prompts(num_examples=samples)
 
-        # 3) Helper to chunk a list
-        def chunker(seq, size):
-            for i in range(0, len(seq), size):
-                yield seq[i : i + size]
+        # ─── 2) Collect records ────────────────────────────────────────────
+        batch_records = []
+        query_records = []
 
-        # 4) Loop over prompt‐batches
-        for subbatch_prompts, subbatch_refs in zip(
+        for batch_id, (sub_prompts, sub_refs) in enumerate(zip(
             chunker(prompts, batch_size),
             chunker(references, batch_size)
-        ):
-            if self.verbose:
-                print(f"\nProcessing batch of {len(subbatch_prompts)} prompts...")
-
-            # 5) Spin up background monitor
+        )):
+            # 2.a) Start GPU / power monitor
             readings = {"memory": [], "power": [], "util": []}
             stop_evt = threading.Event()
             monitor = threading.Thread(
@@ -223,107 +242,81 @@ class ModelBenchmark:
             )
             monitor.start()
 
-            # 6) Generate the entire subbatch (generate() returns both outputs and elapsed time)
-            generated_texts, generation_time = self.generate(
-                subbatch_prompts,
-                task_type=self.task
-            )
+            # 2.b) Generate batch
+            raw_outs, gen_time = self.generate(sub_prompts, task_type=task)
+            cleaned = clean_prediction(raw_outs)
 
-            # 6.a) Clean the whole batch at once
-            cleaned_texts = clean_prediction(generated_texts)
-
-            # 7) Stop monitoring
+            # 2.c) Stop monitor & aggregate
             stop_evt.set()
             monitor.join()
+            avg_mem   = sum(readings["memory"]) / len(readings["memory"]) if readings["memory"] else 0.0
+            peak_mem  = max(readings["memory"]) if readings["memory"] else 0.0
+            avg_util  = sum(readings["util"])   / len(readings["util"])   if readings["util"]   else 0.0
+            peak_util = max(readings["util"])   if readings["util"]   else 0.0
+            avg_power = sum(readings["power"])  / len(readings["power"])  if readings["power"]  else 0.0
+            peak_power= max(readings["power"])  if readings["power"]  else 0.0
 
-            # 8) Aggregate GPU stats
-            avg_mem = sum(readings["memory"]) / len(readings["memory"]) if readings["memory"] else 0.0
-            peak_mem = max(readings["memory"]) if readings["memory"] else 0.0
-            avg_power = sum(readings["power"]) / len(readings["power"]) if readings["power"] else 0.0
-            peak_power = max(readings["power"]) if readings["power"] else 0.0
-            avg_util  = sum(readings["util"])  / len(readings["util"])  if readings["util"]  else 0.0
-            peak_util = max(readings["util"])  if readings["util"]  else 0.0
+            total_wh = avg_power * gen_time / 3600.0
+            tokens_per_wh = lambda n: (total_wh * 3600.0 / n) if n>0 else 0.0
+            sents_per_wh  = lambda s: (total_wh * 3600.0 / s) if s>0 else 0.0
 
-            total_wh = avg_power * generation_time / 3600.0
-            joules_per_token = lambda n: (total_wh * 3600.0 / n) if n > 0 else 0.0
-            joules_per_sentence = lambda s: (total_wh * 3600.0 / s) if s > 0 else 0.0
+            # 2.d) Batch-level metrics
+            # count totals for this batch
+            tok_counts  = [tok_cnt(t) for t in cleaned]
+            sent_counts = [sent_cnt(t) for t in cleaned]
+            total_tokens    = sum(tok_counts)
+            total_sentences = sum(sent_counts)
 
-            # 9) Measure TTFT for this batch (if available)
-            TTFT = (
-                self.backend_handler.measure_ttft()
-                if hasattr(self.backend_handler, "measure_ttft")
-                else None
-            )
+            batch_metrics = {
+                "batch_id":           batch_id,
+                "batch_time_s":       round(gen_time, 4),
+                "batch_tokens":       total_tokens,
+                "batch_sentences":    total_sentences,
+                "avg_gpu_mem_mb":     round(avg_mem, 2),
+                "peak_gpu_mem_mb":    round(peak_mem, 2),
+                "avg_gpu_util_pct":   round(avg_util, 2),
+                "peak_gpu_util_pct":  round(peak_util, 2),
+                "avg_power_w":        round(avg_power, 2),
+                "peak_power_w":       round(peak_power, 2),
+                "total_energy_wh":    round(total_wh, 6),
+            }
+            batch_records.append(batch_metrics)
 
-            # 10) Unpack per-prompt results
-            for prompt, pred, reference in zip(
-                subbatch_prompts, cleaned_texts, subbatch_refs
-            ):
-                if self.verbose:
-                    print(f"\nPrediction:\n{pred}\nRef:\n{reference}\n")
+            # 2.e) Per-query metrics
+            for i, (prompt, pred, ref) in enumerate(zip(sub_prompts, cleaned, sub_refs)):
+                nt = tok_counts[i]
+                ns = sent_counts[i]
+                atl = gen_time / total_tokens if total_tokens > 0 else 0
+                gl  = atl * nt
+                tps = nt / gen_time if gen_time > 0 else 0
+                sps = ns / gen_time if gen_time > 0 else 0
 
-                num_tokens = len(pred.split())
-                num_sentences = pred.count('.') + 1
-
-                ATL = generation_time / num_tokens if num_tokens > 0 else 0
-                TPS = num_tokens / generation_time if generation_time > 0 else 0
-                SPS = num_sentences / generation_time if generation_time > 0 else 0
-
-                latency = {
-                    "TTFT": round(TTFT, 4) if TTFT is not None else None,
-                    "ATL": round(ATL, 4),
-                    "GL":  round(generation_time, 4),
-                }
-                throughput = {
-                    "TPS": round(TPS, 2),
-                    "SPS": round(SPS, 2),
-                }
-                gpu_metrics = {
-                    "Avg GPU Mem (MB)": round(avg_mem, 2),
-                    "Peak GPU Mem (MB)": round(peak_mem, 2),
-                    "Avg GPU Util (%)":  round(avg_util, 2),
-                    "Peak GPU Util (%)": round(peak_util, 2),
-                }
-                energy_metrics = {
-                    "Total Energy (Wh)":             round(total_wh, 6),
-                    "Avg Power (W)":                 round(avg_power, 2),
-                    "Peak Power (W)":                round(peak_power, 2),
-                    "Energy per Token (J/token)":    round(joules_per_token(num_tokens), 6),
-                    "Energy per Sentence (J/sentence)": round(joules_per_sentence(num_sentences), 6),
-                }
                 storage = self.measure_storage()
-                quality = task_.quality_metrics(pred, reference)
+                quality = task_.quality_metrics(pred, ref)
 
-                result = {
-                    "prompt_length": len(prompt),
-                    "prompt": prompt,
+                query_metrics = {
+                    "batch_id": batch_id,
+                    "prompt":          prompt,
                     "generated_answer": pred,
-                    "reference_answer": reference,
-                    **latency,
-                    **throughput,
-                    **gpu_metrics,
-                    **energy_metrics,
+                    "reference_answer": ref,
+                    "num_tokens":      nt,
+                    "num_sentences":   ns,
+                    "ATL":             round(atl, 6),
+                    "GL":              round(gl, 6),
+                    "TPS":             round(tps, 2),
+                    "SPS":             round(sps, 2),
+                    "Energy per Token (J/token)":     round(tokens_per_wh(nt), 6),
+                    "Energy per Sentence (J/sentence)": round(sents_per_wh(ns), 6),
                     **storage,
-                    **quality,
+                    **quality
                 }
-                results.append(result)
-                torch.cuda.empty_cache()
+                query_records.append(query_metrics)
 
-        # 11) Aggregate to a DataFrame and summarize
-        df = pd.DataFrame(results)
-        numeric = df.select_dtypes(include="number")
-        means = numeric.mean()
-        stds = numeric.std()
-        summary = means.combine(stds, lambda m, s: f"{m:.6f} ± {s:.6f}")
+        # ─── 3) Assemble DataFrames & return ────────────────────────────────
+        batch_df = pd.DataFrame(batch_records)
+        query_df = pd.DataFrame(query_records)
 
-        print(f"Stats for {self.model_name} on {self.backend}/{self.task}:")
-        print(summary)
-
-        # 13) Cleanup
-        self.backend_handler = None
-        self.close()
-
-        return df
+        return metadata_df, batch_df, query_df
 
     def _run_server(self,
                    run_time: float,
@@ -459,6 +452,7 @@ class ModelBenchmark:
             samples: int = 100,
             batch_size: int = 1,
             sample_interval: float = 0.1,
+            task: str = "summarization", #qa, sql
             scenario: str = "batch",
             requests_per_sec: Optional[float] = None,
             run_time: Optional[float] = None,
@@ -470,14 +464,16 @@ class ModelBenchmark:
         Dispatch to the appropriate execution method, then handle exporting.
         """
         if scenario == "single":
-            df = self._run_basic(
+            meta_df, batch_df, query_df = self._run_batch(
+                task=task,
                 samples=samples,
                 batch_size=1,
                 sample_interval=sample_interval
             )
 
         elif scenario == "batch":
-            df = self._run_basic(
+            meta_df, batch_df, query_df = self._run_batch(
+                task=task,
                 samples=samples,
                 batch_size=batch_size,
                 sample_interval=sample_interval
@@ -488,7 +484,7 @@ class ModelBenchmark:
                 "Must set requests_per_sec in server mode"
             assert run_time is not None, \
                 "Must set run_time in seconds in server mode"
-            df = self._run_server(
+            meta_df, batch_df, query_df = self._run_server(
                 run_time=run_time,
                 requests_per_sec=requests_per_sec,
                 sample_interval=sample_interval,
@@ -500,20 +496,25 @@ class ModelBenchmark:
             raise ValueError(f"Unknown scenario '{scenario}'. "
                              "Choose 'single', 'batch', or 'server'.")
 
-        # Exporting logic: save DataFrame if path provided or default
-        import os
-        if export_path:
-            out_path = export_path
-        else:
-            # construct a default filename
-            out_path = (
-                f"{self.base_path}/results/"
-                f"{self.backend}_{self.model_name}_{self.task}_"
-                f"{scenario}"
-                + (f"_{int(requests_per_sec)}rps" if scenario == 'server' else '')
-                + (f"_{batch_size}bs" if scenario == 'batch' else '')
-                + ".csv"
-            )
-        os.makedirs(os.path.dirname(out_path), exist_ok=True)
-        df.to_csv(out_path, index=False)
-        return df
+        # Exporting logic
+        # Determine base path
+
+        # Write each table
+        meta_df.to_csv(f"{self.base_path}_metadata.csv", index=False)
+        batch_df.to_csv(f"{self.base_path}_batch.csv", index=False)
+        query_df.to_csv(f"{self.base_path}_query.csv", index=False)
+
+        # 1) Metadata
+        print("=== Run Metadata ===")
+        print(meta_df.mean(numeric_only=True))
+
+        # 2) Batch-level summary
+        print("=== Batch-level Metrics ===")
+        # show aggregates or describe
+        print(batch_df.mean(numeric_only=True))
+
+        # 3) Query-level preview
+        print("=== Query-level Sample Rows ===")
+        print(query_df.mean(numeric_only=True))
+
+        return meta_df, batch_df, query_df

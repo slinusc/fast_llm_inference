@@ -1,5 +1,18 @@
 import re, string
 
+_tok_re  = re.compile(r"\S+")
+_sent_re = re.compile(r"[.!?…]+")
+
+def tok_cnt(text: str) -> int:
+    return len(_tok_re.findall(text))
+
+def sent_cnt(text: str) -> int:
+    return max(len(_sent_re.findall(text)), 1)
+
+def chunker(seq, size):
+            for i in range(0, len(seq), size):
+                yield seq[i : i + size]
+
 def normalize_answer(s: str) -> str:
             
             s = s.lower()
@@ -19,3 +32,4 @@ def clean_prediction(prediction: list[str]) -> list[str]:
         ans = ans.strip()
         cleaned.append(ans)
     return cleaned
+
