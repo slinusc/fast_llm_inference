@@ -72,40 +72,14 @@ class VLLMBackend(BaseBackend):
         # Call vLLM
         outputs = self.model.generate(prompt_list, params)
 
-        results = []
+        texts = []
+
         for gen_out in outputs:
             # gen_out.outputs is a list; take the first CompletionOutput
-            sample = gen_out.outputs[0]
-            text = sample.text.lstrip()
+            txt = gen_out.outputs[0].text.lstrip()
+            texts.append(txt)
 
-            if perplexity:
-                # Raw token IDs
-                token_ids = sample.token_ids                           # :contentReference[oaicite:0]{index=0}
-
-                # sample.logprobs is an OpenAI‐style dict:
-                # {
-                #    "tokens": [...],                # str tokens
-                #    "token_logprobs": [...],        # float log-probs
-                #    "top_logprobs": [...],          # list of dicts (optional)
-                #    "text_offset": [...]
-                # }
-                lp_dict  = sample.logprobs                             
-                tokens   = lp_dict["tokens"]                            # 
-                logps    = lp_dict["token_logprobs"]
-                # Compute per-token perplexity
-                ppl      = [math.exp(-lp) for lp in logps]
-
-                results.append({
-                    "text":         text,
-                    "token_ids":    token_ids,
-                    "tokens":       tokens,
-                    "logprobs":     logps,
-                    "perplexities": ppl,
-                })
-            else:
-                results.append({"text": text})
-
-        return results if is_batch else results[0]
+        return texts if is_batch else texts[0]
 
 
 
