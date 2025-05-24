@@ -8,7 +8,9 @@ class VLLMBackend(BaseBackend):
     def load_model(self):
         self.model = LLM(
             model=self.model_path,
-            trust_remote_code=True
+            trust_remote_code=True,
+            gpu_memory_utilization=0.95, # test for gemma2-27B 4bit
+            max_model_len=2048 # test for gemma2-27B 4bit
         )
 
 
