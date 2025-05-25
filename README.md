@@ -67,13 +67,6 @@ Ensure your NVIDIA driver and `nvidia-smi` are installed and accessible.
    pip install --upgrade pip
    pip install -r requirements.txt
    ```
-
-   If you don’t have a `requirements.txt`, install core packages:
-
-   ```bash
-   pip install pandas torch transformers vllm llama-cpp-python mii rich yaml psutil pynvml
-   ```
-
 ---
 
 ## Cloning the Repository
