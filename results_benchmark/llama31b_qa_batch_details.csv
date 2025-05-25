@@ -1,5 +1,5 @@
-batch_id,prompt,generated_answer,reference_answer,ATL,GL,TPS,SPS,energy_per_token,energy_per_sentence,estimated_query_cost_usd,exact_match,F1_score
-0,"### SYSTEM
+prompt,generated_answer,reference_answer,ATL,GL,TPS,SPS,energy_per_token,energy_per_sentence,estimated_query_cost_usd,exact_match,F1_score
+"### SYSTEM
 You are a question-answering assistant. Answer in exactly **ONE** line. If the answer is not contained in the context, don't answer. If it is possible just answer with a single word or a short phrase. 
 
 ### EXAMPLES
@@ -21,8 +21,8 @@ Question:
 Who was the final Prime Minister of East Germany?
 
 ### OUTPUT
-Answer:",Lothar de Maizière,"['Lothar de Maizière', 'Lothar de Maizière', 'Lothar de Maizière']",0.073783,0.221349,13.55,4.52,2.964009,8.892027,4.3e-05,1,1.0
-0,"### SYSTEM
+Answer:",Lothar de Maizière,"['Lothar de Maizière', 'Lothar de Maizière', 'Lothar de Maizière']",0.073686,0.221058,13.57,4.52,3.287729,9.863188,2.2e-05,1,1.0
+"### SYSTEM
 You are a question-answering assistant. Answer in exactly **ONE** line. If the answer is not contained in the context, don't answer. If it is possible just answer with a single word or a short phrase. 
 
 ### EXAMPLES
@@ -44,8 +44,8 @@ Question:
 What has complicated definitions that prevent classification into a framework?
 
 ### OUTPUT
-Answer:",Some complexity classes.,"['complexity classes', 'complexity classes', 'some complexity classes']",0.073783,0.221349,13.55,4.52,2.964009,8.892027,4.3e-05,1,1.0
-1,"### SYSTEM
+Answer:",Some complexity classes.,"['complexity classes', 'complexity classes', 'some complexity classes']",0.073686,0.221058,13.57,4.52,3.287729,9.863188,2.2e-05,1,1.0
+"### SYSTEM
 You are a question-answering assistant. Answer in exactly **ONE** line. If the answer is not contained in the context, don't answer. If it is possible just answer with a single word or a short phrase. 
 
 ### EXAMPLES
@@ -67,8 +67,8 @@ Question:
 Telnet was sold to 
 
 ### OUTPUT
-Answer:",GTE.,"['Telenet was incorporated in 1973 and started operations in 1975. It went public in 1979 and was then sold to GTE', 'GTE', 'GTE']",0.076018,0.076018,13.15,13.15,3.728469,13.049642,5.2e-05,1,1.0
-1,"### SYSTEM
+Answer:",GTE.,"['Telenet was incorporated in 1973 and started operations in 1975. It went public in 1979 and was then sold to GTE', 'GTE', 'GTE']",0.063068,0.063068,15.86,15.86,2.943763,10.303169,2.2e-05,1,1.0
+"### SYSTEM
 You are a question-answering assistant. Answer in exactly **ONE** line. If the answer is not contained in the context, don't answer. If it is possible just answer with a single word or a short phrase. 
 
 ### EXAMPLES
@@ -90,8 +90,8 @@ Question:
 What does ctenophora rely on for digestion and respiration?
 
 ### OUTPUT
-Answer:",water flow through the body cavity.,"['water flow through the body cavity', ""κτείς kteis 'comb' and φέρω pherō 'carry'"", 'water flow through the body cavity']",0.076018,0.456105,13.15,2.19,3.728469,13.049642,5.2e-05,1,1.0
-2,"### SYSTEM
+Answer:",water flow through the body cavity.,"['water flow through the body cavity', ""κτείς kteis 'comb' and φέρω pherō 'carry'"", 'water flow through the body cavity']",0.063068,0.378408,15.86,2.64,2.943763,10.303169,2.2e-05,1,1.0
+"### SYSTEM
 You are a question-answering assistant. Answer in exactly **ONE** line. If the answer is not contained in the context, don't answer. If it is possible just answer with a single word or a short phrase. 
 
 ### EXAMPLES
@@ -113,8 +113,8 @@ Question:
 When were these settlers naturalized as English colonists?
 
 ### OUTPUT
-Answer:",1705,"['12 May 1705', '1705', '12 May 1705']",0.144138,0.144138,6.94,6.94,8.64683,8.64683,2.9e-05,1,1.0
-2,"### SYSTEM
+Answer:",1705,"['12 May 1705', '1705', '12 May 1705']",0.141141,0.141141,7.09,7.09,7.203229,7.203229,1.4e-05,1,1.0
+"### SYSTEM
 You are a question-answering assistant. Answer in exactly **ONE** line. If the answer is not contained in the context, don't answer. If it is possible just answer with a single word or a short phrase. 
 
 ### EXAMPLES
@@ -136,8 +136,8 @@ Question:
 What profession was Nathan Alterman?
 
 ### OUTPUT
-Answer:",Poet,"['poet', 'poet', 'poet']",0.144138,0.144138,6.94,6.94,8.64683,8.64683,2.9e-05,1,1.0
-3,"### SYSTEM
+Answer:",Poet,"['poet', 'poet', 'poet']",0.141141,0.141141,7.09,7.09,7.203229,7.203229,1.4e-05,1,1.0
+"### SYSTEM
 You are a question-answering assistant. Answer in exactly **ONE** line. If the answer is not contained in the context, don't answer. If it is possible just answer with a single word or a short phrase. 
 
 ### EXAMPLES
@@ -159,8 +159,8 @@ Question:
 What is one avenue being compensated for by having committees serve such a large role?
 
 ### OUTPUT
-Answer:",lack of revising chamber.,"['no revising chamber', 'no revising chamber', 'take evidence from witnesses, conduct inquiries and scrutinise legislation']",0.072289,0.289156,13.83,3.46,4.270289,12.810867,4.3e-05,0,0.5714285714285715
-3,"### SYSTEM
+Answer:",lack of revising chamber.,"['no revising chamber', 'no revising chamber', 'take evidence from witnesses, conduct inquiries and scrutinise legislation']",0.071348,0.285391,14.02,3.5,3.875652,11.626955,2.1e-05,0,0.5714285714285715
+"### SYSTEM
 You are a question-answering assistant. Answer in exactly **ONE** line. If the answer is not contained in the context, don't answer. If it is possible just answer with a single word or a short phrase. 
 
 ### EXAMPLES
@@ -182,4 +182,4 @@ Question:
 The hardest problems in NP can be analogously written as what class of problems?
 
 ### OUTPUT
-Answer:",NP-complete problems.,"['NP-complete', 'NP-complete', 'NP-complete']",0.072289,0.144578,13.83,6.92,4.270289,12.810867,4.3e-05,0,0.6666666666666666
+Answer:",NP-complete problems.,"['NP-complete', 'NP-complete', 'NP-complete']",0.071348,0.142696,14.02,7.01,3.875652,11.626955,2.1e-05,0,0.6666666666666666

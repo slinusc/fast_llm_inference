@@ -204,7 +204,6 @@ class ModelBenchmark:
         return generated_text, time.time() - start_time
 
     
-    @staticmethod
     def estimate_local_query_cost(inf_time_sec: float,
                                 power_watts: float = 0.0,
                                 electricity_usd_per_kwh: float = 0.31, # swiss average in usd
@@ -271,13 +270,13 @@ class ModelBenchmark:
         # build metadata row
         cold = startup + load_time + ttft
         meta = {
+            "model_name":          self.model_name,
+            "model_size_mb":       self.model_size,
+            "backend":             self.backend,
             "startup_time_sec":    round(startup, 4),
             "load_model_time_sec": round(load_time, 4),
             "ttft_sec":            round(ttft, 4),
             "cold_start_sec":      round(cold, 4),
-            "model_name":          self.model_name,
-            "model_size_mb":       self.model_size,
-            "backend":             self.backend,
         }
         return pd.DataFrame([meta])
 
@@ -323,17 +322,18 @@ class ModelBenchmark:
                 yield batch_id, list(ps), list(rs), list(ts)
 
 
-    def _run_scenario(self,
-                      task: str,
-                      scenario: str = "batch",
-                      samples: int = 100,
-                      batch_size: int = 1,
-                      run_time: Optional[float] = None,
-                      requests_per_sec: Optional[float] = None,
-                      max_batch_size: Optional[int] = None,
-                      sample_interval: float = 0.1,
-                      quality_metric: bool = True):
-
+    def _run_scenario(
+        self,
+        task: str,
+        scenario: str = "batch",
+        samples: int = 100,
+        batch_size: int = 1,
+        run_time: Optional[float] = None,
+        requests_per_sec: Optional[float] = None,
+        max_batch_size: Optional[int] = None,
+        sample_interval: float = 0.1,
+        quality_metric: bool = True
+    ):
         # ─── 1) instantiate the Task once ────────────────────────────────
         if task == "summarization":
             from benchmark.tasks.summarization import SummarizationTask
@@ -349,16 +349,27 @@ class ModelBenchmark:
 
         # ─── 2) initialization & metadata ────────────────────────────────
         meta_df = self._initialize()
-        # scenario‐specific fields
+        total_gen_time = 0.0
+        energy_wh_total = 0.0
+
+        # Start telemetry monitor
+        global_readings = {"memory": [], "power": [], "util": [], "cpu": []}
+        stop_evt = threading.Event()
+        mon = threading.Thread(
+            target=self._metrics_monitor,
+            args=(global_readings, stop_evt, sample_interval),
+            daemon=True
+        )
+        mon.start()
+
+        # scenario-specific fields
         extra = {}
         if scenario == "server":
             extra["requests_per_sec"] = requests_per_sec
-            extra["run_time_s"]       = run_time
-        else:  # "batch" or "single"
-            extra["batch_size"]    = batch_size
-            extra["num_queries"]   = samples
-
-        # merge into the one-row DataFrame
+            extra["run_time_s"] = run_time
+        else:
+            extra["batch_size"] = batch_size
+            extra["num_queries"] = samples
         meta_df = meta_df.assign(**extra)
 
         # ─── 3) prompts + scheduled timestamps ───────────────────────────
@@ -366,73 +377,34 @@ class ModelBenchmark:
             task_, scenario, samples, run_time, requests_per_sec
         )
 
-        batch_records = []
         query_records = []
 
         # ─── 4) iterate batches ──────────────────────────────────────────
         for batch_id, ps, rs, ts in self._batch_generator(
-                prompts, refs, sched_ts,
-                scenario, batch_size, max_batch_size):
-
-            # start telemetry monitor
-            readings = {"memory": [], "power": [], "util": [], "cpu": []}
-            stop_evt = threading.Event()
-            mon = threading.Thread(
-                target=self._metrics_monitor,
-                args=(readings, stop_evt, sample_interval),
-                daemon=True
-            )
-            mon.start()
-
+            prompts, refs, sched_ts,
+            scenario, batch_size, max_batch_size
+        ):
             # generation + clean
             raw, gen_time = self.generate(ps, task_type=task)
             cleaned = clean_prediction(raw)
 
-            # stop monitor
-            stop_evt.set()
-            mon.join()
-
-            # aggregate hardware readings
-            avg_mem   = sum(readings["memory"]) / len(readings["memory"]) if readings["memory"] else 0
-            peak_mem  = max(readings["memory"]) if readings["memory"] else 0
-            avg_util  = sum(readings["util"])   / len(readings["util"])   if readings["util"]   else 0
-            peak_util = max(readings["util"])   if readings["util"]   else 0
-            avg_power = sum(readings["power"])  / len(readings["power"])  if readings["power"]  else 0
-            peak_power= max(readings["power"])  if readings["power"]  else 0
-            avg_cpu   = sum(readings["cpu"])    / len(readings["cpu"])    if readings["cpu"]    else 0
-            peak_cpu  = max(readings["cpu"])    if readings["cpu"]    else 0
+            # accumulate global metrics
+            total_gen_time += gen_time
+            avg_power = sum(global_readings["power"]) / len(global_readings["power"]) if global_readings["power"] else 0
+            energy_wh_total += (avg_power * gen_time) / 3600
 
             # token/sentence counts
-            tok_counts    = [tok_cnt(t) for t in cleaned]
-            sent_counts   = [sent_cnt(t) for t in cleaned]
-            total_tokens    = sum(tok_counts)
+            tok_counts = [tok_cnt(t) for t in cleaned]
+            sent_counts = [sent_cnt(t) for t in cleaned]
+            total_tokens = sum(tok_counts)
             total_sentences = sum(sent_counts)
-
-            # build batch record
-            batch_metrics = {
-                "batch_id":          batch_id,
-                "batch_time_s":      round(gen_time, 6),
-                "batch_tokens":      total_tokens,
-                "batch_sentences":   total_sentences,
-                "avg_gpu_mem_mb":    round(avg_mem, 2),
-                "peak_gpu_mem_mb":   round(peak_mem, 2),
-                "overhead_mb":       round(max(peak_mem - self.model_size, 0), 2),
-                "avg_gpu_util_pct":  round(avg_util, 2),
-                "peak_gpu_util_pct": round(peak_util, 2),
-                "avg_cpu_util_pct":  round(avg_cpu, 2),
-                "peak_cpu_util_pct": round(peak_cpu, 2),
-                "avg_power_w":       round(avg_power, 2),
-                "peak_power_w":      round(peak_power, 2),
-                "total_energy_wh":   round((avg_power * gen_time) / 3600, 6),
-            }
-            batch_records.append(batch_metrics)
 
             # build per-query records
             for i, (p, pred, ref, sched) in enumerate(zip(ps, cleaned, rs, ts)):
-                nt  = tok_counts[i]
-                ns  = sent_counts[i]
+                nt = tok_counts[i]
+                ns = sent_counts[i]
                 atl = gen_time / total_tokens if total_tokens else 0
-                gl  = atl * nt
+                gl = atl * nt
                 tps = nt / gl if gl else 0
                 sps = ns / gl if gl else 0
                 wait = max(0.0, time.time() - sched) if scenario == "server" else 0.0
@@ -440,41 +412,88 @@ class ModelBenchmark:
                 quality = task_.quality_metrics(pred, ref) if quality_metric else {}
 
                 qm = {
-                    "batch_id":            batch_id,
-                    "prompt":              p,
-                    "generated_answer":    pred,
-                    "reference_answer":    ref,
-                    "ATL":                 round(atl, 6),
-                    "GL":                  round(gl, 6),
-                    "TPS":                 round(tps, 2),
-                    "SPS":                 round(sps, 2),
-                    "energy_per_token":    round((avg_power * gen_time) / total_tokens, 6) if total_tokens else 0,
+                    "prompt": p,
+                    "generated_answer": pred,
+                    "reference_answer": ref,
+                    "ATL": round(atl, 6),
+                    "GL": round(gl, 6),
+                    "TPS": round(tps, 2),
+                    "SPS": round(sps, 2),
+                    "energy_per_token": round((avg_power * gen_time) / total_tokens, 6) if total_tokens else 0,
                     "energy_per_sentence": round((avg_power * gen_time) / total_sentences, 6) if total_sentences else 0,
-                    "estimated_query_cost_usd":  self.estimate_local_query_cost(inf_time_sec=gen_time, power_watts=avg_power),
+                    "estimated_query_cost_usd": self.estimate_local_query_cost(
+                        inf_time_sec=gen_time / batch_size,
+                        power_watts=avg_power
+                    ),
                     **quality
                 }
 
                 if scenario == "server":
                     qm.update({
                         "scheduled_ts": sched,
-                        "wait_time_s":  round(wait, 6),
+                        "wait_time_s": round(wait, 6),
                     })
 
                 query_records.append(qm)
 
+        # stop telemetry after all batches
+        stop_evt.set()
+        mon.join()
+
         # ─── 5) assemble outputs ──────────────────────────────────────────
-        batch_df   = pd.DataFrame(batch_records)
         details_df = pd.DataFrame(query_records)
 
+        # compute overall metrics
+        if global_readings["memory"]:
+            avg_gpu_mem_mb = round(sum(global_readings["memory"]) / len(global_readings["memory"]), 2)
+            peak_gpu_mem_mb = round(max(global_readings["memory"]), 2)
+        else:
+            avg_gpu_mem_mb = peak_gpu_mem_mb = 0
 
-        qc = details_df.select_dtypes(include="number").drop(columns=["batch_id"]) if "batch_id" in details_df else details_df.select_dtypes(include="number")
-        details_summary = {f"avg_{col}": qc[col].mean() for col in qc}
-        run_report = meta_df.copy()
-        run_report = run_report.drop(columns=["batch_id"], errors="ignore")
-        for k, v in {**batch_df, **details_summary}.items():
-            run_report[k] = round(v, 6) if isinstance(v, float) else v
+        overhead_mb = round(max(peak_gpu_mem_mb - self.model_size, 0), 2)
+
+        if global_readings["util"]:
+            avg_gpu_util_pct = round(sum(global_readings["util"]) / len(global_readings["util"]), 2)
+            peak_gpu_util_pct = round(max(global_readings["util"]), 2)
+        else:
+            avg_gpu_util_pct = peak_gpu_util_pct = 0
+
+        if global_readings["cpu"]:
+            avg_cpu_util_pct = round(sum(global_readings["cpu"]) / len(global_readings["cpu"]), 2)
+            peak_cpu_util_pct = round(max(global_readings["cpu"]), 2)
+        else:
+            avg_cpu_util_pct = peak_cpu_util_pct = 0
+
+        if global_readings["power"]:
+            avg_power_w = round(sum(global_readings["power"]) / len(global_readings["power"]), 2)
+            peak_power_w = round(max(global_readings["power"]), 2)
+        else:
+            avg_power_w = peak_power_w = 0
+
+        total_energy_wh = round(energy_wh_total, 6)
+
+        # finalize report
+        run_report = meta_df.copy().drop(columns=["batch_id"], errors="ignore")
+        run_report["total_generation_time_s"] = round(total_gen_time, 6)
+        run_report["avg_gpu_mem_mb"] = avg_gpu_mem_mb
+        run_report["peak_gpu_mem_mb"] = peak_gpu_mem_mb
+        run_report["overhead_mb"] = overhead_mb
+        run_report["avg_gpu_util_pct"] = avg_gpu_util_pct
+        run_report["peak_gpu_util_pct"] = peak_gpu_util_pct
+        run_report["avg_cpu_util_pct"] = avg_cpu_util_pct
+        run_report["peak_cpu_util_pct"] = peak_cpu_util_pct
+        run_report["avg_power_w"] = avg_power_w
+        run_report["peak_power_w"] = peak_power_w
+        run_report["total_energy_wh"] = total_energy_wh
+
+        # add average values from details report
+        if not details_df.empty:
+            detail_nums = details_df.select_dtypes(include="number")
+            for col in detail_nums.columns:
+                run_report[f"avg_{col}"] = round(detail_nums[col].mean(), 6)
 
         return run_report, details_df
+
 
 
     def run(self, *, task, scenario, samples=None, batch_size=None,
