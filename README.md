@@ -24,11 +24,15 @@ A lightweight benchmarking toolkit for evaluating the performance, resource usag
 
 ## Features
 
-* **Multi‑backend support**: Hugging Face, vLLM, llama.cpp, DeepSpeed-MII, LMDeploy.
+* **Multi-backend support**: Hugging Face, vLLM, llama.cpp, DeepSpeed-MII, LMDeploy.
 * **Flexible scenarios**: single, batch, and server (Poisson arrival) modes.
+* **Supported tasks**: summarization, question answering (QA), and SQL generation.
+* **Quality metrics**: ROUGE-1/2/L for summarization; Exact Match & F1 for QA; AST-equal & normalized-equal for SQL.
+* **Custom tasks**: easily add new tasks by implementing a Task class in `benchmark/tasks` and updating the Task factory.
+* **Latency**: measures average generation latency (e.g., ATL and GL metrics).
+* **Throughput**: measures tokens per second (TPS) and sentences per second (SPS).
 * **Resource monitoring**: GPU memory, GPU utilization, CPU usage, and power sampling via NVML.
 * **Cost estimation**: amortization + energy cost per query using a GPU lookup table and local power measurements.
-* **Rich CLI**: YAML‑driven configuration, quiet/default and verbose modes, progress spinner, and human‑friendly summary.
 
 ---
 
@@ -73,13 +77,6 @@ Ensure your NVIDIA driver and `nvidia-smi` are installed and accessible.
 
 ```bash
 git clone https://github.com/slinusc/fast_llm_inference.git
-cd fast_llm_inference
-```
-
-Or, if you prefer SSH:
-
-```bash
-git clone git@github.com:slinusc/fast_llm_inference.git
 cd fast_llm_inference
 ```
 
@@ -158,7 +155,9 @@ After the run completes, you’ll see:
 fast_llm_inference/
 ├── benchmark/              # core benchmarking code
 │   ├── benchmark.py        # ModelBenchmark class
-│   └── backends/           # wrappers for each inference backend
+│   ├── backends/           # wrappers for each inference backend
+│   ├── lookup/             # look up tables
+│   └── tasks/              # task definitions (summarization, QA, SQL)
 ├── launch_benchmark.py     # CLI wrapper
 ├── requirements.txt        # Python dependencies
 ├── config.yaml.sample      # example config file
