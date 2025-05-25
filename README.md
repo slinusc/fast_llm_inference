@@ -28,11 +28,11 @@ Bench360 is a modular benchmarking suite for local LLM inference. It offers a fu
 * **Flexible scenarios**: single, batch, and server (Poisson arrival) modes.
 * **Supported tasks**: summarization, question answering (QA), and SQL generation.
 * **Quality metrics**: Task specific metrics like ROUGE, F1 or AST.
-* **Custom tasks**: easily add new tasks by implementing a Task class in `benchmark/tasks` and updating the Task factory.
+* **Custom tasks**: easily add new tasks by implementing a Task class in `benchmark/tasks`.
 * **Latency**: measures average generation latency (e.g., ATL and GL metrics).
 * **Throughput**: measures tokens per second (TPS) and sentences per second (SPS).
 * **Resource monitoring**: GPU memory, GPU utilization, CPU usage, and power sampling via NVML.
-* **Cost estimation**: amortization + energy cost per query using a GPU lookup table and local power measurements.
+* **Cost estimation**: amortization + energy cost per query.
 
 ---
 
