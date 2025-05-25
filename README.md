@@ -124,7 +124,7 @@ We provide a CLI script `launch_benchmark.py`. It reads your YAML config and run
 
 ### Basic Run (Quiet Mode)
 
-Suppresses all internal logs and prints a spinner plus final summary:
+Suppresses all internal logs, just prints final summary:
 
 ```bash
 python launch_benchmark.py config.yaml
