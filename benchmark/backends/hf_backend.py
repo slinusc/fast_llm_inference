@@ -57,9 +57,9 @@ class HuggingFaceBackend(BaseBackend):
         # Call HF pipeline on the batch
         pipe_kwargs = {
             "max_new_tokens": max_new,
-            "temperature": 0.1,
             "do_sample": False,
             "return_full_text": False,
+            "pad_token_id": self.tokenizer.eos_token_id
         }
         if stopper:
             pipe_kwargs["stopping_criteria"] = stopper
@@ -76,7 +76,6 @@ class HuggingFaceBackend(BaseBackend):
         _ = self.pipe(
             "Artificial intelligence is",
             max_new_tokens=1,
-            temperature=0.1,
             return_full_text=False,
         )
         return time.time() - start

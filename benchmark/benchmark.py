@@ -1,7 +1,6 @@
 import time
 from datetime import datetime
-import threading   
-import pandas as pd
+import threading
 import os
 import torch
 import numpy as np
@@ -10,6 +9,10 @@ from typing import Optional
 import random
 import multiprocessing as mp
 import psutil
+import subprocess
+import math
+import pandas as pd
+from difflib import get_close_matches
 from pynvml import (
     nvmlInit,
     nvmlDeviceGetHandleByIndex,
@@ -34,13 +37,11 @@ class ModelBenchmark:
         backend="huggingface",
         model_name="",
         model_path=None,
-        base_path="/home/ubuntu/fast_llm_inference/",
         verbose=False
     ):
         self.backend = backend
         self.model_path = model_path
         self.model_name = model_name
-        self.base_path = base_path
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.verbose = verbose
 
@@ -201,7 +202,45 @@ class ModelBenchmark:
         start_time = time.time()
         generated_text = self.backend_handler.generate(prompts, task_type=task_type)
         return generated_text, time.time() - start_time
+
     
+    @staticmethod
+    def estimate_local_query_cost(inf_time_sec: float,
+                                power_watts: float = 0.0,
+                                electricity_usd_per_kwh: float = 0.31, # swiss average in usd
+                                csv_path: str = "/home/ubuntu/fast_llm_inference/benchmark/lookup/nvidia_llm_gpus.csv") -> dict:
+        """
+        Estimate amortization + energy cost for a single LLM query.
+        Uses GPU name + VRAM from nvidia-smi and fuzzy matches CSV table.
+        """
+        # 1) Load table
+        df = pd.read_csv(csv_path)
+
+        # 2) Get GPU info
+        out = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, check=True
+        ).stdout.strip()
+        name, mem = [x.strip() for x in out.split(",")]
+        vram = round(math.ceil(float(mem) / 1024))
+
+        # 3) Match row
+        subset = df[df["VRAM"].between(vram - 2, vram + 2)]
+        if subset.empty:
+            raise ValueError(f"No GPU match for VRAM={vram} GB")
+        names = subset["GPU"].tolist()
+        match = next((n for n in names if n.lower() == name.lower()), 
+                next((n for n in names if n.lower().startswith(name.lower())), 
+                next(iter(get_close_matches(name, names, n=1, cutoff=0.4)), None)))
+        if not match:
+            raise ValueError(f"No close GPU name match for {name}")
+
+        # 4) Cost computation
+        amort_hr = subset[subset["GPU"] == match].iloc[0]["Amortization_USD_hr"]
+        amort_cost = (inf_time_sec / 3600) * amort_hr
+        energy_cost = (power_watts * inf_time_sec / 3.6e6) * electricity_usd_per_kwh if power_watts else 0.0
+
+        return round(amort_cost + energy_cost, 6)
 
     def _initialize(self):
 
@@ -304,7 +343,7 @@ class ModelBenchmark:
             task_ = QATask()
         elif task == "sql":
             from benchmark.tasks.sql import SQLTask
-            task_ = SQLTask(tables_path=self.base_path + "/benchmark/tasks/tables.json")
+            task_ = SQLTask(tables_path="fast_llm_inference/benchmark/lookup/tables.json")
         else:
             raise ValueError(f"Task {task!r} not supported.")
 
@@ -405,16 +444,22 @@ class ModelBenchmark:
                     "prompt":              p,
                     "generated_answer":    pred,
                     "reference_answer":    ref,
-                    "scheduled_ts":        sched,
-                    "wait_time_s":         round(wait, 6),
                     "ATL":                 round(atl, 6),
                     "GL":                  round(gl, 6),
                     "TPS":                 round(tps, 2),
                     "SPS":                 round(sps, 2),
                     "energy_per_token":    round((avg_power * gen_time) / total_tokens, 6) if total_tokens else 0,
                     "energy_per_sentence": round((avg_power * gen_time) / total_sentences, 6) if total_sentences else 0,
+                    "estimated_query_cost_usd":  self.estimate_local_query_cost(inf_time_sec=gen_time, power_watts=avg_power),
                     **quality
                 }
+
+                if scenario == "server":
+                    qm.update({
+                        "scheduled_ts": sched,
+                        "wait_time_s":  round(wait, 6),
+                    })
+
                 query_records.append(qm)
 
         # ─── 5) assemble outputs ──────────────────────────────────────────
@@ -425,6 +470,7 @@ class ModelBenchmark:
         qc = details_df.select_dtypes(include="number").drop(columns=["batch_id"]) if "batch_id" in details_df else details_df.select_dtypes(include="number")
         details_summary = {f"avg_{col}": qc[col].mean() for col in qc}
         run_report = meta_df.copy()
+        run_report = run_report.drop(columns=["batch_id"], errors="ignore")
         for k, v in {**batch_df, **details_summary}.items():
             run_report[k] = round(v, 6) if isinstance(v, float) else v
 
@@ -448,3 +494,4 @@ class ModelBenchmark:
             sample_interval=sample_interval,
             quality_metric=quality_metric
         )
+
