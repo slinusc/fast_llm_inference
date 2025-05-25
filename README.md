@@ -27,7 +27,7 @@ Bench360 is a modular benchmarking suite for local LLM inference. It offers a fu
 * **Multi-backend support**: Hugging Face, vLLM, llama.cpp, DeepSpeed-MII, LMDeploy.
 * **Flexible scenarios**: single, batch, and server (Poisson arrival) modes.
 * **Supported tasks**: summarization, question answering (QA), and SQL generation.
-* **Quality metrics**: ROUGE-1/2/L for summarization; Exact Match & F1 for QA; AST-equal & normalized-equal for SQL.
+* **Quality metrics**: Task specific metrics like ROUGE, F1 or AST.
 * **Custom tasks**: easily add new tasks by implementing a Task class in `benchmark/tasks` and updating the Task factory.
 * **Latency**: measures average generation latency (e.g., ATL and GL metrics).
 * **Throughput**: measures tokens per second (TPS) and sentences per second (SPS).
