@@ -7,7 +7,7 @@ When deploying an LLM locally, practitioners face many trade-offs:
 * Which model architecture best fits my task (e.g. summarization, QA, Text-to-SQL)?
 * What model size is optimal for performance and resource constraints?
 * Should I run the model in half precision (FP16), or use quantization (8-bit, 4-bit)?
-* Which inference engine (vLLM, llama.cpp, Transformers, etc.) performs best in single-stream, server, or batch mode?
+* Which inference engine (vLLM, llama.cpp, Transformers, etc.) performs best in my scenario (e.g. single-stream, server, or batch)?
 
 **Bench360** answers these questions by providing a unified benchmarking framework that covers every part of the local inference stack—not quality or performance metrics. It is designed for model evaluators, systems researchers, and AI engineers who want to understand the trade-offs of real-world deployment. It enables reproducible, apples-to-apples comparison between hardware, models, optimization techniques, and inference engines under realistic scenarios.
 
