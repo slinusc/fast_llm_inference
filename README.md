@@ -4,7 +4,7 @@
 
 When deploying an LLM locally, practitioners face many trade-offs:
 
-* Which model architecture best fits my task (e.g. summarization, QA, SQL)?
+* Which model architecture best fits my task (e.g. summarization, QA, Text-to-SQL)?
 * What model size is optimal for performance and resource constraints?
 * Should I run the model in half precision (FP16), or use quantization (8-bit, 4-bit)?
 * Which inference engine (vLLM, llama.cpp, Transformers, etc.) performs best in single-stream, server, or batch mode?
