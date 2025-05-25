@@ -1,6 +1,6 @@
 # Bench360 — Benchmarking Local LLMs from 360°
 
-A lightweight benchmarking toolkit for evaluating the performance, resource usage, and cost of locally deployed Large Language Models (LLMs) across multiple inference backends (Hugging Face Transformers, vLLM, llama.cpp, DeepSpeed-MII, LMDeploy).
+Bench360 is a modular benchmarking suite for local LLM inference. It offers a full-stack, extensible pipeline to evaluate the latency, throughput, quality, and cost of large language model inference on consumer and enterprise GPUs. Bench360 supports flexible backends, tasks, and scenarios, enabling fair and reproducible comparisons for researchers and practitioners.
 
 ---
 
