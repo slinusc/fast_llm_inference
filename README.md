@@ -2,14 +2,16 @@
 
 **Bench360** is a modular benchmarking suite for local LLM inference. It offers a full-stack, extensible pipeline to evaluate the latency, throughput, quality, and cost of large language model inference on consumer and enterprise GPUs.
 
-When deploying an LLM locally, practitioners face many trade-offs:
+When deploying a large language model (LLM) locally, practitioners must navigate a range of critical trade-offs. Key questions include:
 
-* Which model architecture best fits my task (e.g. summarization, QA, Text-to-SQL)?
-* What model size is optimal for performance and resource constraints?
-* Should I run the model in half precision (FP16), or use quantization (8-bit, 4-bit)?
-* Which inference engine (vLLM, llama.cpp, Transformers, etc.) performs best in my scenario (e.g. single-stream, server, or batch)?
+* **Which model architecture** is best suited for my specific task—such as summarization, question answering, or text-to-SQL?
+* **What model size** offers the right balance between output quality and system limitations (e.g., available VRAM, latency)?
+* **Should I prioritize speed or efficiency** by using reduced precision formats like FP16, or apply more aggressive quantization techniques (e.g., 8-bit, 4-bit)?
+* **Which inference backend**—such as vLLM, llama.cpp, Hugging Face Transformers, or DeepSpeed—delivers the best performance for my use case (e.g., low-latency single-stream, high-throughput batch processing, or multi-user server deployment)?
+* **How does quantization affect model accuracy in my scenario**, and is the quality degradation acceptable? For example, should we deploy a 7B model in FP16, a 14B model in 8-bit, or a 27B model in 4-bit when VRAM is limited?
+* **What hardware configuration** (e.g., consumer GPU vs. data center card) gives the best cost-performance ratio?
 
-**Bench360** answers these questions by providing a unified benchmarking framework that covers every part of the local inference stack—not quality or performance metrics. It is designed for model evaluators, systems researchers, and AI engineers who want to understand the trade-offs of real-world deployment. It enables reproducible, apples-to-apples comparison between hardware, models, optimization techniques, and inference engines under realistic scenarios.
+Choosing the right combination of architecture, precision, backend, and hardware is essential for optimizing local LLM inference performance, cost, and quality. **Bench360** answers these questions by providing a unified benchmarking framework that covers every part of the local inference stack—not quality or performance metrics. It is designed for model evaluators, systems researchers, and AI engineers who want to understand the trade-offs of real-world deployment. It enables reproducible, apples-to-apples comparison between hardware, models, optimization techniques, and inference engines under realistic scenarios.
 
 ## System Overview
 
