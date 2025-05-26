@@ -1,6 +1,15 @@
 # Bench360 — Benchmarking Local LLMs from 360°
 
-Bench360 is a modular benchmarking suite for local LLM inference. It offers a full-stack, extensible pipeline to evaluate the latency, throughput, quality, and cost of large language model inference on consumer and enterprise GPUs. Bench360 supports flexible backends, tasks, and scenarios, enabling fair and reproducible comparisons for researchers and practitioners.
+**Bench360** is a modular benchmarking suite for local LLM inference. It offers a full-stack, extensible pipeline to evaluate the latency, throughput, quality, and cost of large language model inference on consumer and enterprise GPUs.
+
+When deploying an LLM locally, practitioners face many trade-offs:
+
+* Which model architecture best fits my task (e.g. summarization, QA, Text-to-SQL)?
+* What model size is optimal for performance and resource constraints?
+* Should I run the model in half precision (FP16), or use quantization (8-bit, 4-bit)?
+* Which inference engine (vLLM, llama.cpp, Transformers, etc.) performs best in my scenario (e.g. single-stream, server, or batch)?
+
+**Bench360** answers these questions by providing a unified benchmarking framework that covers every part of the local inference stack—not quality or performance metrics. It is designed for model evaluators, systems researchers, and AI engineers who want to understand the trade-offs of real-world deployment. It enables reproducible, apples-to-apples comparison between hardware, models, optimization techniques, and inference engines under realistic scenarios.
 
 ---
 
@@ -124,7 +133,7 @@ We provide a CLI script `launch_benchmark.py`. It reads your YAML config and run
 
 ### Basic Run (Quiet Mode)
 
-Suppresses all internal logs and prints a spinner plus final summary:
+Suppresses all internal logs, just prints final summary:
 
 ```bash
 python launch_benchmark.py config.yaml
