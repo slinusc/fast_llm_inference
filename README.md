@@ -11,6 +11,13 @@ When deploying an LLM locally, practitioners face many trade-offs:
 
 **Bench360** answers these questions by providing a unified benchmarking framework that covers every part of the local inference stack—not quality or performance metrics. It is designed for model evaluators, systems researchers, and AI engineers who want to understand the trade-offs of real-world deployment. It enables reproducible, apples-to-apples comparison between hardware, models, optimization techniques, and inference engines under realistic scenarios.
 
+## System Overview
+
+For an overview of the benchmark architecture, see the [Bench360 Architecture Diagram (PDF)](benchmark/docs/bench360-overview.pdf).
+
+[![Bench360 Diagram Preview](benchmark/docs/overview-preview.png)](benchmark/docs/bench360-overview.pdf)
+
+
 ---
 
 ## Table of Contents
