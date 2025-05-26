@@ -13,7 +13,7 @@ When deploying an LLM locally, practitioners face many trade-offs:
 
 ## System Overview
 
-[![Bench360 Diagram Preview](benchmark/docs/overview-preview.png)](benchmark/docs/bench360-overview.pdf)
+[![Bench360 Diagram Preview](benchmark/docs/bench360-overview.png)](benchmark/docs/bench360-overview.pdf)
 
 ---
 
