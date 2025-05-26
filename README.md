@@ -15,6 +15,9 @@ When deploying an LLM locally, practitioners face many trade-offs:
 
 For an overview of the benchmark architecture, see the [Bench360 Architecture Diagram (PDF)](benchmark/docs/bench360-overview.pdf).
 
+[![Bench360 Diagram Preview](benchmark/docs/overview-preview.png)](benchmark/docs/bench360-overview.pdf)
+
+
 ---
 
 ## Table of Contents
