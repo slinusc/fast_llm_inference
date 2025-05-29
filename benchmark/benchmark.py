@@ -37,11 +37,13 @@ class ModelBenchmark:
         backend="huggingface",
         model_name="",
         model_path=None,
+        model_size_mb=None,
         verbose=False
     ):
         self.backend = backend
         self.model_path = model_path
         self.model_name = model_name
+        self.model_size_mb = model_size_mb  # in MB, if known
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.verbose = verbose
 
@@ -132,29 +134,34 @@ class ModelBenchmark:
             nvmlShutdown()
             self.handle = None  # prevent double‐shutdown
 
-    @staticmethod
-    def get_model_size_mb(path):
+
+    def get_model_size_mb(self, path):
         """
         Calculate model size in MB. Requires the model path.
         - If `path` is a GGUF file, return its size.
         - If `path` is a directory, sum safetensors, json, tokenizer, etc.
         """
-        if os.path.isfile(path) and path.endswith(".gguf"):
-            return os.path.getsize(path) / (1024 * 1024)
+        if self.model_size_mb is None:
 
-        elif os.path.isdir(path):
-            extensions = (".safetensors", ".bin", ".json", ".txt", ".model", ".tokenizer")
-            total_size = 0
-            for dirpath, _, filenames in os.walk(path):
-                for f in filenames:
-                    if f.endswith(extensions):
-                        fp = os.path.join(dirpath, f)
-                        if os.path.exists(fp):
-                            total_size += os.path.getsize(fp)
-            return total_size / (1024 * 1024)
+            if os.path.isfile(path) and path.endswith(".gguf"):
+                return os.path.getsize(path) / (1024 * 1024)
 
+            elif os.path.isdir(path):
+                extensions = (".safetensors", ".bin", ".json", ".txt", ".model", ".tokenizer")
+                total_size = 0
+                for dirpath, _, filenames in os.walk(path):
+                    for f in filenames:
+                        if f.endswith(extensions):
+                            fp = os.path.join(dirpath, f)
+                            if os.path.exists(fp):
+                                total_size += os.path.getsize(fp)
+                return total_size / (1024 * 1024)
+
+            else:
+                raise ValueError("Path must be a .gguf file or a model directory.")
         else:
-            raise ValueError("Path must be a .gguf file or a model directory.")
+            # If model_size_mb is already set, return it
+            return self.model_size_mb
 
 
     def measure_energy(self, num_tokens, num_sentences, generation_time, sample_interval=0.1):
@@ -203,7 +210,7 @@ class ModelBenchmark:
         generated_text = self.backend_handler.generate(prompts, task_type=task_type)
         return generated_text, time.time() - start_time
 
-    
+    @staticmethod
     def estimate_local_query_cost(inf_time_sec: float,
                                 power_watts: float = 0.0,
                                 electricity_usd_per_kwh: float = 0.31, # swiss average in usd
@@ -232,7 +239,7 @@ class ModelBenchmark:
                 next((n for n in names if n.lower().startswith(name.lower())), 
                 next(iter(get_close_matches(name, names, n=1, cutoff=0.4)), None)))
         if not match:
-            raise ValueError(f"No close GPU name match for {name}")
+            return None  # no match found
 
         # 4) Cost computation
         amort_hr = subset[subset["GPU"] == match].iloc[0]["Amortization_USD_hr"]
@@ -491,6 +498,10 @@ class ModelBenchmark:
             detail_nums = details_df.select_dtypes(include="number")
             for col in detail_nums.columns:
                 run_report[f"avg_{col}"] = round(detail_nums[col].mean(), 6)
+
+        if self.backend == "tgi":
+            self.backend_handler.close()
+        
 
         return run_report, details_df
 

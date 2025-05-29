@@ -8,6 +8,7 @@ _BACKENDS = {
     "llama.cpp":    ("benchmark.backends.llamacpp_backend","LlamaCppBackend"),
     "deepspeed_mii":("benchmark.backends.deepspeed_mii_backend","MIIDeepSpeedBackend"),
     "lmdeploy":     ("benchmark.backends.lmdeploy_backend","LMDeployBackend"),
+    "tgi":          ("benchmark.backends.tgi_backend",     "TGIBackend"),
 }
 
 def get_backend(name: str, **kwargs):

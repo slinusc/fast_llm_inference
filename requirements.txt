@@ -3,6 +3,7 @@ torch
 transformers
 datasets
 evaluate
+rouge-score
 pandas
 bitsandbytes
 
@@ -24,3 +25,4 @@ safetensors
 
 # Needed for HuggingFace pipeline with stopping criteria
 accelerate  # pulled by transformers, listed here for completeness
+
