@@ -55,6 +55,7 @@ Choosing the right combination of architecture, precision, backend, and hardware
 
 * **OS**: Linux (tested on Ubuntu 22.04+)
 * **GPU**: NVIDIA with NVML drivers
+* **CUDA**: Version 12.xx
 * **Python**: 3.8 or newer
 
 Install the following system packages (Ubuntu example):
