@@ -13,10 +13,6 @@ import contextlib
 
 # Further suppression
 warnings.filterwarnings("ignore")
-logging.getLogger("transformers").setLevel(logging.ERROR)
-logging.getLogger("accelerate").setLevel(logging.ERROR)
-logging.getLogger("absl").setLevel(logging.ERROR)
-logging.getLogger("vllm").setLevel(logging.ERROR)
 
 from rich.console import Console
 from rich.table   import Table

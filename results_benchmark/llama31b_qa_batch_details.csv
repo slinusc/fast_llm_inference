@@ -21,7 +21,7 @@ Question:
 Who was the final Prime Minister of East Germany?
 
 ### OUTPUT
-Answer:",Lothar de Maizière,"['Lothar de Maizière', 'Lothar de Maizière', 'Lothar de Maizière']",0.073686,0.221058,13.57,4.52,3.287729,9.863188,2.2e-05,1,1.0
+Answer:",Lothar de Maizière,"['Lothar de Maizière', 'Lothar de Maizière', 'Lothar de Maizière']",0.221426,0.664278,4.52,1.51,8.684843,21.712107,5.4e-05,1,1.0
 "### SYSTEM
 You are a question-answering assistant. Answer in exactly **ONE** line. If the answer is not contained in the context, don't answer. If it is possible just answer with a single word or a short phrase. 
 
@@ -44,7 +44,7 @@ Question:
 What has complicated definitions that prevent classification into a framework?
 
 ### OUTPUT
-Answer:",Some complexity classes.,"['complexity classes', 'complexity classes', 'some complexity classes']",0.073686,0.221058,13.57,4.52,3.287729,9.863188,2.2e-05,1,1.0
+Answer:",Complexity classes,"['complexity classes', 'complexity classes', 'some complexity classes']",0.221426,0.442852,4.52,2.26,8.684843,21.712107,5.4e-05,1,1.0
 "### SYSTEM
 You are a question-answering assistant. Answer in exactly **ONE** line. If the answer is not contained in the context, don't answer. If it is possible just answer with a single word or a short phrase. 
 
@@ -67,7 +67,7 @@ Question:
 Telnet was sold to 
 
 ### OUTPUT
-Answer:",GTE.,"['Telenet was incorporated in 1973 and started operations in 1975. It went public in 1979 and was then sold to GTE', 'GTE', 'GTE']",0.063068,0.063068,15.86,15.86,2.943763,10.303169,2.2e-05,1,1.0
+Answer:",GTE,"['Telenet was incorporated in 1973 and started operations in 1975. It went public in 1979 and was then sold to GTE', 'GTE', 'GTE']",0.106044,0.106044,9.43,9.43,4.601041,16.103643,3.6e-05,1,1.0
 "### SYSTEM
 You are a question-answering assistant. Answer in exactly **ONE** line. If the answer is not contained in the context, don't answer. If it is possible just answer with a single word or a short phrase. 
 
@@ -90,7 +90,7 @@ Question:
 What does ctenophora rely on for digestion and respiration?
 
 ### OUTPUT
-Answer:",water flow through the body cavity.,"['water flow through the body cavity', ""κτείς kteis 'comb' and φέρω pherō 'carry'"", 'water flow through the body cavity']",0.063068,0.378408,15.86,2.64,2.943763,10.303169,2.2e-05,1,1.0
+Answer:",Water flow through the body cavity,"['water flow through the body cavity', ""κτείς kteis 'comb' and φέρω pherō 'carry'"", 'water flow through the body cavity']",0.106044,0.636263,9.43,1.57,4.601041,16.103643,3.6e-05,1,1.0
 "### SYSTEM
 You are a question-answering assistant. Answer in exactly **ONE** line. If the answer is not contained in the context, don't answer. If it is possible just answer with a single word or a short phrase. 
 
@@ -113,7 +113,7 @@ Question:
 When were these settlers naturalized as English colonists?
 
 ### OUTPUT
-Answer:",1705,"['12 May 1705', '1705', '12 May 1705']",0.141141,0.141141,7.09,7.09,7.203229,7.203229,1.4e-05,1,1.0
+Answer:",12 May 1705,"['12 May 1705', '1705', '12 May 1705']",0.150043,0.45013,6.66,2.22,7.803379,19.508448,3.7e-05,1,1.0
 "### SYSTEM
 You are a question-answering assistant. Answer in exactly **ONE** line. If the answer is not contained in the context, don't answer. If it is possible just answer with a single word or a short phrase. 
 
@@ -136,7 +136,7 @@ Question:
 What profession was Nathan Alterman?
 
 ### OUTPUT
-Answer:",Poet,"['poet', 'poet', 'poet']",0.141141,0.141141,7.09,7.09,7.203229,7.203229,1.4e-05,1,1.0
+Answer:",Israeli poet,"['poet', 'poet', 'poet']",0.150043,0.300087,6.66,3.33,7.803379,19.508448,3.7e-05,0,0.6666666666666666
 "### SYSTEM
 You are a question-answering assistant. Answer in exactly **ONE** line. If the answer is not contained in the context, don't answer. If it is possible just answer with a single word or a short phrase. 
 
@@ -159,7 +159,7 @@ Question:
 What is one avenue being compensated for by having committees serve such a large role?
 
 ### OUTPUT
-Answer:",lack of revising chamber.,"['no revising chamber', 'no revising chamber', 'take evidence from witnesses, conduct inquiries and scrutinise legislation']",0.071348,0.285391,14.02,3.5,3.875652,11.626955,2.1e-05,0,0.5714285714285715
+Answer:",Strengthening the role of backbenchers in their scrutiny of the government,"['no revising chamber', 'no revising chamber', 'take evidence from witnesses, conduct inquiries and scrutinise legislation']",0.112198,1.234183,8.91,0.81,6.309025,37.854152,6.6e-05,0,0.0
 "### SYSTEM
 You are a question-answering assistant. Answer in exactly **ONE** line. If the answer is not contained in the context, don't answer. If it is possible just answer with a single word or a short phrase. 
 
@@ -182,4 +182,4 @@ Question:
 The hardest problems in NP can be analogously written as what class of problems?
 
 ### OUTPUT
-Answer:",NP-complete problems.,"['NP-complete', 'NP-complete', 'NP-complete']",0.071348,0.142696,14.02,7.01,3.875652,11.626955,2.1e-05,0,0.6666666666666666
+Answer:",NP-complete,"['NP-complete', 'NP-complete', 'NP-complete']",0.112198,0.112198,8.91,8.91,6.309025,37.854152,6.6e-05,1,1.0

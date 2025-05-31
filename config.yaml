@@ -1,9 +1,9 @@
 # choose one of: huggingface, vllm, llama.cpp, deepspeed_mii, lmdeploy
-backend: huggingface
+backend: sglang
 
 # path to your model directory or .gguf file
-model_path: /home/ubuntu/fast_llm_inference/models/llama-3.2-3b-instruct
-model_name: llama-3.1-8B
+model_path: mistralai/Mistral-7B-Instruct-v0.3
+model_name: Mistral-7B-Instruct-v0.3
 
 # task & scenario
 task: qa    # or "qa", "sql"

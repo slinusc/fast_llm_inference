@@ -1,5 +1,5 @@
 import time
-from datetime import datetime
+import requests 
 import threading
 import os
 import torch
@@ -23,7 +23,7 @@ from pynvml import (
     nvmlDeviceGetComputeRunningProcesses
 )
 
-from benchmark.backends.backend_factory import get_backend
+from benchmark.inference_engine_client import InferenceEngineClient
 from benchmark.utils import clean_prediction, tok_cnt, sent_cnt, chunker
 
 DEFAULT_SEED = 42
@@ -34,18 +34,22 @@ torch.manual_seed(DEFAULT_SEED)
 class ModelBenchmark:
     def __init__(
         self,
-        backend="huggingface",
+        backend="tgi",
         model_name="",
         model_path=None,
-        model_size_mb=None,
+        model_size=None,
         verbose=False
     ):
+        
+        if backend not in ("tgi", "mii", "sglang", "vllm", "lmdeploy"):
+            raise ValueError(f"Unsupported backend: {backend}. Supported backends are: tgi, mii, sglang, vllm, lmdeploy.")
         self.backend = backend
         self.model_path = model_path
         self.model_name = model_name
-        self.model_size_mb = model_size_mb  # in MB, if known
+        self.model_size = model_size  # in MB, if known
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.verbose = verbose
+        self.iec = InferenceEngineClient()
 
         # GPU monitoring
         if torch.cuda.is_available():
@@ -135,13 +139,13 @@ class ModelBenchmark:
             self.handle = None  # prevent double‐shutdown
 
 
-    def get_model_size_mb(self, path):
+    def get_model_size(self, path):
         """
         Calculate model size in MB. Requires the model path.
         - If `path` is a GGUF file, return its size.
         - If `path` is a directory, sum safetensors, json, tokenizer, etc.
         """
-        if self.model_size_mb is None:
+        if self.model_size is None:
 
             if os.path.isfile(path) and path.endswith(".gguf"):
                 return os.path.getsize(path) / (1024 * 1024)
@@ -161,7 +165,7 @@ class ModelBenchmark:
                 raise ValueError("Path must be a .gguf file or a model directory.")
         else:
             # If model_size_mb is already set, return it
-            return self.model_size_mb
+            return self.model_size
 
 
     def measure_energy(self, num_tokens, num_sentences, generation_time, sample_interval=0.1):
@@ -205,10 +209,10 @@ class ModelBenchmark:
         return {}
 
 
-    def generate(self, prompts, task_type):
+    def generate(self, prompts):
         start_time = time.time()
-        generated_text = self.backend_handler.generate(prompts, task_type=task_type)
-        return generated_text, time.time() - start_time
+        out = self.iec.completion(prompts)
+        return out, time.time() - start_time
 
     @staticmethod
     def estimate_local_query_cost(inf_time_sec: float,
@@ -249,42 +253,42 @@ class ModelBenchmark:
         return round(amort_cost + energy_cost, 6)
 
     def _initialize(self):
+        """
+        Instead of instantiating a local backend handler, this version
+        spins up the inference engine via the `launch_engine.sh` script
+        (which now only launches the container) and then polls the
+        /v1/completions endpoint every second until it returns HTTP 200.
+        We measure how long it takes for the server to become ready,
+        then record model size and metadata.
+        """
 
-        # 0.a) startup backend
+        # Ensure our script is executable
+        
+
+        # 0.a) Launch the engine via bash script (non-blocking)
         t0 = time.time()
-        self.backend_handler = get_backend(
-            name=self.backend,
-            model_path=self.model_path,
-            verbose=self.verbose
-        )
+        self.iec.launch(backend=self.backend, model_path=self.model_path)
+
+        # 0.c) Compute elapsed time for startup 
         startup = time.time() - t0
 
-        # 0.b) load model
-        t0 = time.time()
-        self.backend_handler.load_model()
-        load_time = time.time() - t0
+        # 0.d) Compute model size
+        #TODO: Uncomment when model size is available
+        self.model_size = 0 #self.get_model_size(self.model_path) 
 
-        # 0.c) model size
-        self.model_size = self.get_model_size_mb(self.model_path)
+        # 0.e) TTFT already covered by first poll, set to 0
+        ttft = self.iec.measure_ttft()
 
-        # 0.d) warm-up
-        self.backend_handler.generate(["Warmup"] * 3)
-
-        # 0.e) ttft
-        ttft = (self.backend_handler.measure_ttft()
-                if hasattr(self.backend_handler, "measure_ttft") else 0)
-
-        # build metadata row
-        cold = startup + load_time + ttft
+        # Build metadata row
         meta = {
-            "model_name":          self.model_name,
-            "model_size_mb":       self.model_size,
-            "backend":             self.backend,
-            "startup_time_sec":    round(startup, 4),
-            "load_model_time_sec": round(load_time, 4),
-            "ttft_sec":            round(ttft, 4),
-            "cold_start_sec":      round(cold, 4),
+            "model_name":           self.model_name,
+            "model_size_mb":        self.model_size,
+            "backend":              self.backend,
+            "startup":              round(startup, 4),
+            "ttft_sec":             round(ttft, 4),
+            "coldstart":            round(startup + ttft, 4)
         }
+
         return pd.DataFrame([meta])
 
 
@@ -392,7 +396,8 @@ class ModelBenchmark:
             scenario, batch_size, max_batch_size
         ):
             # generation + clean
-            raw, gen_time = self.generate(ps, task_type=task)
+            raw, gen_time = self.generate(ps)
+            
             cleaned = clean_prediction(raw)
 
             # accumulate global metrics
@@ -499,9 +504,7 @@ class ModelBenchmark:
             for col in detail_nums.columns:
                 run_report[f"avg_{col}"] = round(detail_nums[col].mean(), 6)
 
-        if self.backend == "tgi":
-            self.backend_handler.close()
-        
+        self.iec.close()
 
         return run_report, details_df
 

@@ -26,10 +26,16 @@ def clean_prediction(prediction: list[str]) -> list[str]:
     for raw in prediction:
         # 1) Remove anything after the first '###'
         ans = raw.split("###", 1)[0]
-        # 2) Then remove anything after the first newline
-        ans = ans.split("\n", 1)[0]
-        # 3) Strip whitespace and trailing periods
+
+        # 2) Strip whitespace (including newlines) from both ends
         ans = ans.strip()
+
+        # 3) Remove anything after the first newline (in the stripped string)
+        ans = ans.split("\n", 1)[0]
+
+        # 4) Strip again and remove any trailing periods
+        ans = ans.strip().rstrip(".")
+
         cleaned.append(ans)
     return cleaned
 
