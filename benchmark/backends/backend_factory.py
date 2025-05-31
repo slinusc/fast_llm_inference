@@ -6,7 +6,7 @@ _BACKENDS = {
     "huggingface": ("benchmark.backends.hf_backend",     "HuggingFaceBackend"),
     "vllm":         ("benchmark.backends.vllm_backend",   "VLLMBackend"),
     "llama.cpp":    ("benchmark.backends.llamacpp_backend","LlamaCppBackend"),
-    "deepspeed_mii":("benchmark.backends.deepspeed_mii_backend","MIIDeepSpeedBackend"),
+    "mii":("benchmark.backends.deepspeed_mii_backend","MIIDeepSpeedBackend"),
     "lmdeploy":     ("benchmark.backends.lmdeploy_backend","LMDeployBackend"),
     "tgi":          ("benchmark.backends.tgi_backend",     "TGIBackend"),
 }

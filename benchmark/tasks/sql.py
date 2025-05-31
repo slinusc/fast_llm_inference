@@ -8,7 +8,7 @@ class SQLTask:
     A class to handle the SQL generation task using the Spider dataset.
     """
 
-    def __init__(self, tables_path="/home/ubuntu/fast_llm_inference/tables.json"):
+    def __init__(self, tables_path="/home/ubuntu/fast_llm_inference/benchmark/lookup/tables.json"):
         random.seed(42)
         self.dataset = list(load_dataset("spider", split="validation"))
         self.tables_path = tables_path
