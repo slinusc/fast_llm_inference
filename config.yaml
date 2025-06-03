@@ -9,14 +9,23 @@ model_name: Mistral-7B-Instruct-v0.3
 task: qa    # or "qa", "sql", "summarization"
 scenario: batch        # "single", "batch", or "server"
 
-# only for batch/single
-samples: 16
-batch_size: 4
+##########################################################
+
+# only for batch
+# samples: 16
+# batch_size: 4
+
+##########################################################
+
+# only for single
+# samples: 16
+
+##########################################################
 
 # only for server
-# run_time: 30
-# requests_per_sec: 5
-# max_batch_size: 8
+run_time: 60
+concurrent_users: 10
+requests_per_user_per_min: 10
 
 # optional overrides
 sample_interval: 0.1
