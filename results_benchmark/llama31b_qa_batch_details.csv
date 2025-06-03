@@ -21,7 +21,7 @@ Question:
 Who was the final Prime Minister of East Germany?
 
 ### OUTPUT
-Answer:",Lothar de Maizière,"['Lothar de Maizière', 'Lothar de Maizière', 'Lothar de Maizière']",0.221426,0.664278,4.52,1.51,8.684843,21.712107,5.4e-05,1,1.0
+Answer:",Complexity classes,"['Lothar de Maizière', 'Lothar de Maizière', 'Lothar de Maizière']",0.130352,0.260703,7.67,3.84,5.313058,15.939174,3.8e-05,0,0.0
 "### SYSTEM
 You are a question-answering assistant. Answer in exactly **ONE** line. If the answer is not contained in the context, don't answer. If it is possible just answer with a single word or a short phrase. 
 
@@ -44,7 +44,7 @@ Question:
 What has complicated definitions that prevent classification into a framework?
 
 ### OUTPUT
-Answer:",Complexity classes,"['complexity classes', 'complexity classes', 'some complexity classes']",0.221426,0.442852,4.52,2.26,8.684843,21.712107,5.4e-05,1,1.0
+Answer:",GTE,"['complexity classes', 'complexity classes', 'some complexity classes']",0.130352,0.130352,7.67,7.67,5.313058,15.939174,3.8e-05,0,0.0
 "### SYSTEM
 You are a question-answering assistant. Answer in exactly **ONE** line. If the answer is not contained in the context, don't answer. If it is possible just answer with a single word or a short phrase. 
 
@@ -67,7 +67,7 @@ Question:
 Telnet was sold to 
 
 ### OUTPUT
-Answer:",GTE,"['Telenet was incorporated in 1973 and started operations in 1975. It went public in 1979 and was then sold to GTE', 'GTE', 'GTE']",0.106044,0.106044,9.43,9.43,4.601041,16.103643,3.6e-05,1,1.0
+Answer:",Lothar de Maizière,"['Telenet was incorporated in 1973 and started operations in 1975. It went public in 1979 and was then sold to GTE', 'GTE', 'GTE']",0.130352,0.391055,7.67,2.56,5.313058,15.939174,3.8e-05,0,0.0
 "### SYSTEM
 You are a question-answering assistant. Answer in exactly **ONE** line. If the answer is not contained in the context, don't answer. If it is possible just answer with a single word or a short phrase. 
 
@@ -90,7 +90,7 @@ Question:
 What does ctenophora rely on for digestion and respiration?
 
 ### OUTPUT
-Answer:",Water flow through the body cavity,"['water flow through the body cavity', ""κτείς kteis 'comb' and φέρω pherō 'carry'"", 'water flow through the body cavity']",0.106044,0.636263,9.43,1.57,4.601041,16.103643,3.6e-05,1,1.0
+Answer:",Water flow through the body cavity,"['water flow through the body cavity', ""κτείς kteis 'comb' and φέρω pherō 'carry'"", 'water flow through the body cavity']",0.130352,0.782109,7.67,1.28,5.313058,15.939174,3.8e-05,1,1.0
 "### SYSTEM
 You are a question-answering assistant. Answer in exactly **ONE** line. If the answer is not contained in the context, don't answer. If it is possible just answer with a single word or a short phrase. 
 
@@ -113,7 +113,7 @@ Question:
 When were these settlers naturalized as English colonists?
 
 ### OUTPUT
-Answer:",12 May 1705,"['12 May 1705', '1705', '12 May 1705']",0.150043,0.45013,6.66,2.22,7.803379,19.508448,3.7e-05,1,1.0
+Answer:",Israeli poet,"['12 May 1705', '1705', '12 May 1705']",0.110032,0.220064,9.09,4.54,5.301158,19.879341,4e-05,0,0.0
 "### SYSTEM
 You are a question-answering assistant. Answer in exactly **ONE** line. If the answer is not contained in the context, don't answer. If it is possible just answer with a single word or a short phrase. 
 
@@ -136,7 +136,7 @@ Question:
 What profession was Nathan Alterman?
 
 ### OUTPUT
-Answer:",Israeli poet,"['poet', 'poet', 'poet']",0.150043,0.300087,6.66,3.33,7.803379,19.508448,3.7e-05,0,0.6666666666666666
+Answer:",NP-complete,"['poet', 'poet', 'poet']",0.110032,0.110032,9.09,9.09,5.301158,19.879341,4e-05,0,0.0
 "### SYSTEM
 You are a question-answering assistant. Answer in exactly **ONE** line. If the answer is not contained in the context, don't answer. If it is possible just answer with a single word or a short phrase. 
 
@@ -159,7 +159,7 @@ Question:
 What is one avenue being compensated for by having committees serve such a large role?
 
 ### OUTPUT
-Answer:",Strengthening the role of backbenchers in their scrutiny of the government,"['no revising chamber', 'no revising chamber', 'take evidence from witnesses, conduct inquiries and scrutinise legislation']",0.112198,1.234183,8.91,0.81,6.309025,37.854152,6.6e-05,0,0.0
+Answer:",1705,"['no revising chamber', 'no revising chamber', 'take evidence from witnesses, conduct inquiries and scrutinise legislation']",0.110032,0.110032,9.09,9.09,5.301158,19.879341,4e-05,0,0.0
 "### SYSTEM
 You are a question-answering assistant. Answer in exactly **ONE** line. If the answer is not contained in the context, don't answer. If it is possible just answer with a single word or a short phrase. 
 
@@ -182,4 +182,188 @@ Question:
 The hardest problems in NP can be analogously written as what class of problems?
 
 ### OUTPUT
-Answer:",NP-complete,"['NP-complete', 'NP-complete', 'NP-complete']",0.112198,0.112198,8.91,8.91,6.309025,37.854152,6.6e-05,1,1.0
+Answer:",Strengthening the role of backbenchers in their scrutiny of the government.,"['NP-complete', 'NP-complete', 'NP-complete']",0.110032,1.210352,9.09,0.83,5.301158,19.879341,4e-05,0,0.0
+"### SYSTEM
+You are a question-answering assistant. Answer in exactly **ONE** line. If the answer is not contained in the context, don't answer. If it is possible just answer with a single word or a short phrase. 
+
+### EXAMPLES
+Context:
+The Normans (Norman: Nourmands; French: Normands; Latin: Normanni)…
+Question:
+What is the name of the region the Normans gave their name to?
+Answer:
+Normandy
+
+### INSTRUCTION
+Read the context and answer the question.
+
+### INPUT
+Context:
+After the revocation of the Edict of Nantes, the Dutch Republic received the largest group of Huguenot refugees, an estimated total of 75,000 to 100,000 people. Amongst them were 200 clergy. Many came from the region of the Cévennes, for instance, the village of Fraissinet-de-Lozère. This was a huge influx as the entire population of the Dutch Republic amounted to ca. 2 million at that time. Around 1700, it is estimated that nearly 25% of the Amsterdam population was Huguenot.[citation needed] In 1705, Amsterdam and the area of West Frisia were the first areas to provide full citizens rights to Huguenot immigrants, followed by the Dutch Republic in 1715. Huguenots intermarried with Dutch from the outset.
+
+Question:
+What was the population of the Dutch Republic before this emigration?
+
+### OUTPUT
+Answer:",Boolean circuits,"['ca. 2 million', '2 million', '2 million']",0.083758,0.167515,11.94,5.97,4.356608,16.337279,3.1e-05,0,0.0
+"### SYSTEM
+You are a question-answering assistant. Answer in exactly **ONE** line. If the answer is not contained in the context, don't answer. If it is possible just answer with a single word or a short phrase. 
+
+### EXAMPLES
+Context:
+The Normans (Norman: Nourmands; French: Normands; Latin: Normanni)…
+Question:
+What is the name of the region the Normans gave their name to?
+Answer:
+Normandy
+
+### INSTRUCTION
+Read the context and answer the question.
+
+### INPUT
+Context:
+Environmentalists are concerned about loss of biodiversity that will result from destruction of the forest, and also about the release of the carbon contained within the vegetation, which could accelerate global warming. Amazonian evergreen forests account for about 10% of the world's terrestrial primary productivity and 10% of the carbon stores in ecosystems—of the order of 1.1 × 1011 metric tonnes of carbon. Amazonian forests are estimated to have accumulated 0.62 ± 0.37 tons of carbon per hectare per year between 1975 and 1996.
+
+Question:
+The loss of biodiversity may be the result of what, according to environmentalists?
+
+### OUTPUT
+Answer:",ca. 2 million,"['destruction of the forest', 'destruction of the forest', 'destruction of the forest']",0.083758,0.251273,11.94,3.98,4.356608,16.337279,3.1e-05,0,0.0
+"### SYSTEM
+You are a question-answering assistant. Answer in exactly **ONE** line. If the answer is not contained in the context, don't answer. If it is possible just answer with a single word or a short phrase. 
+
+### EXAMPLES
+Context:
+The Normans (Norman: Nourmands; French: Normands; Latin: Normanni)…
+Question:
+What is the name of the region the Normans gave their name to?
+Answer:
+Normandy
+
+### INSTRUCTION
+Read the context and answer the question.
+
+### INPUT
+Context:
+Islamism, also known as Political Islam (Arabic: إسلام سياسي‎ islām siyāsī), is an Islamic revival movement often characterized by moral conservatism, literalism, and the attempt ""to implement Islamic values in all spheres of life."" Islamism favors the reordering of government and society in accordance with the Shari'a. The different Islamist movements have been described as ""oscillating between two poles"": at one end is a strategy of Islamization of society through state power seized by revolution or invasion; at the other ""reformist"" pole Islamists work to Islamize society gradually ""from the bottom up"". The movements have ""arguably altered the Middle East more than any trend since the modern states gained independence"", redefining ""politics and even borders"" according to one journalist (Robin Wright).
+
+Question:
+What have the two different Islamist movements been described as oscillating between?
+
+### OUTPUT
+Answer:",Destruction of the forest,"['poles', 'two poles', 'poles']",0.083758,0.33503,11.94,2.98,4.356608,16.337279,3.1e-05,0,0.0
+"### SYSTEM
+You are a question-answering assistant. Answer in exactly **ONE** line. If the answer is not contained in the context, don't answer. If it is possible just answer with a single word or a short phrase. 
+
+### EXAMPLES
+Context:
+The Normans (Norman: Nourmands; French: Normands; Latin: Normanni)…
+Question:
+What is the name of the region the Normans gave their name to?
+Answer:
+Normandy
+
+### INSTRUCTION
+Read the context and answer the question.
+
+### INPUT
+Context:
+Other important complexity classes include BPP, ZPP and RP, which are defined using probabilistic Turing machines; AC and NC, which are defined using Boolean circuits; and BQP and QMA, which are defined using quantum Turing machines. #P is an important complexity class of counting problems (not decision problems). Classes like IP and AM are defined using Interactive proof systems. ALL is the class of all decision problems.
+
+Question:
+AC and NC are complexity classes typically associated with what type of circuit?
+
+### OUTPUT
+Answer:",Two poles: revolution/invasion and reformist strategy.,"['Boolean', 'Boolean', 'Boolean circuits;']",0.083758,0.502546,11.94,1.99,4.356608,16.337279,3.1e-05,0,0.0
+"### SYSTEM
+You are a question-answering assistant. Answer in exactly **ONE** line. If the answer is not contained in the context, don't answer. If it is possible just answer with a single word or a short phrase. 
+
+### EXAMPLES
+Context:
+The Normans (Norman: Nourmands; French: Normands; Latin: Normanni)…
+Question:
+What is the name of the region the Normans gave their name to?
+Answer:
+Normandy
+
+### INSTRUCTION
+Read the context and answer the question.
+
+### INPUT
+Context:
+Until the early 1980s, industry was a major source of water pollution. Although many plants and factories can be found along the Rhine up into Switzerland, it is along the Lower Rhine that the bulk of them are concentrated, as the river passes the major cities of Cologne, Düsseldorf and Duisburg. Duisburg is the home of Europe's largest inland port and functions as a hub to the sea ports of Rotterdam, Antwerp and Amsterdam. The Ruhr, which joins the Rhine in Duisburg, is nowadays a clean river, thanks to a combination of stricter environmental controls, a transition from heavy industry to light industry and cleanup measures, such as the reforestation of Slag and brownfields. The Ruhr currently provides the region with drinking water. It contributes 70 m3/s (2,500 cu ft/s) to the Rhine. Other rivers in the Ruhr Area, above all, the Emscher, still carry a considerable degree of pollution.
+
+Question:
+What is Europe's largest inland port?
+
+### OUTPUT
+Answer:",Duisburg,"['Duisburg', 'Duisburg', 'Duisburg']",0.115397,0.115397,8.67,8.67,6.221187,18.66356,3.4e-05,1,1.0
+"### SYSTEM
+You are a question-answering assistant. Answer in exactly **ONE** line. If the answer is not contained in the context, don't answer. If it is possible just answer with a single word or a short phrase. 
+
+### EXAMPLES
+Context:
+The Normans (Norman: Nourmands; French: Normands; Latin: Normanni)…
+Question:
+What is the name of the region the Normans gave their name to?
+Answer:
+Normandy
+
+### INSTRUCTION
+Read the context and answer the question.
+
+### INPUT
+Context:
+Today, the Treaty of Lisbon prohibits anti-competitive agreements in Article 101(1), including price fixing. According to Article 101(2) any such agreements are automatically void. Article 101(3) establishes exemptions, if the collusion is for distributional or technological innovation, gives consumers a ""fair share"" of the benefit and does not include unreasonable restraints that risk eliminating competition anywhere (or compliant with the general principle of European Union law of proportionality). Article 102 prohibits the abuse of dominant position, such as price discrimination and exclusive dealing. Article 102 allows the European Council to regulations to govern mergers between firms (the current regulation is the Regulation 139/2004/EC). The general test is whether a concentration (i.e. merger or acquisition) with a community dimension (i.e. affects a number of EU member states) might significantly impede effective competition. Articles 106 and 107 provide that member state's right to deliver public services may not be obstructed, but that otherwise public enterprises must adhere to the same competition principles as companies. Article 107 lays down a general rule that the state may not aid or subsidise private parties in distortion of free competition and provides exemptions for charities, regional development objectives and in the event of a natural disaster.
+
+Question:
+Which articles state that the member states' rights to deliver public services may not be obstructed?
+
+### OUTPUT
+Answer:",Cuba,"['Articles 106 and 107', 'Articles 106 and 107', 'Articles 106 and 107']",0.115397,0.115397,8.67,8.67,6.221187,18.66356,3.4e-05,0,0.0
+"### SYSTEM
+You are a question-answering assistant. Answer in exactly **ONE** line. If the answer is not contained in the context, don't answer. If it is possible just answer with a single word or a short phrase. 
+
+### EXAMPLES
+Context:
+The Normans (Norman: Nourmands; French: Normands; Latin: Normanni)…
+Question:
+What is the name of the region the Normans gave their name to?
+Answer:
+Normandy
+
+### INSTRUCTION
+Read the context and answer the question.
+
+### INPUT
+Context:
+Since then, and so far, general relativity has been acknowledged as the theory that best explains gravity. In GR, gravitation is not viewed as a force, but rather, objects moving freely in gravitational fields travel under their own inertia in straight lines through curved space-time – defined as the shortest space-time path between two space-time events. From the perspective of the object, all motion occurs as if there were no gravitation whatsoever. It is only when observing the motion in a global sense that the curvature of space-time can be observed and the force is inferred from the object's curved path. Thus, the straight line path in space-time is seen as a curved line in space, and it is called the ballistic trajectory of the object. For example, a basketball thrown from the ground moves in a parabola, as it is in a uniform gravitational field. Its space-time trajectory (when the extra ct dimension is added) is almost a straight line, slightly curved (with the radius of curvature of the order of few light-years). The time derivative of the changing momentum of the object is what we label as ""gravitational force"".
+
+Question:
+What is the derivative of an object's changing momentum called?
+
+### OUTPUT
+Answer:","""Time derivative of the changing momentum""","['gravitational force', 'gravitational force', 'gravitational force', 'gravitational force']",0.115397,0.69238,8.67,1.44,6.221187,18.66356,3.4e-05,0,0.0
+"### SYSTEM
+You are a question-answering assistant. Answer in exactly **ONE** line. If the answer is not contained in the context, don't answer. If it is possible just answer with a single word or a short phrase. 
+
+### EXAMPLES
+Context:
+The Normans (Norman: Nourmands; French: Normands; Latin: Normanni)…
+Question:
+What is the name of the region the Normans gave their name to?
+Answer:
+Normandy
+
+### INSTRUCTION
+Read the context and answer the question.
+
+### INPUT
+Context:
+For many native populations, the elimination of French power in North America meant the disappearance of a strong ally and counterweight to British expansion, leading to their ultimate dispossession. The Ohio Country was particularly vulnerable to legal and illegal settlement due to the construction of military roads to the area by Braddock and Forbes. Although the Spanish takeover of the Louisiana territory (which was not completed until 1769) had modest repercussions, the British takeover of Spanish Florida resulted in the westward migration of tribes that did not want to do business with the British, and a rise in tensions between the Choctaw and the Creek, historic enemies whose divisions the British at times exploited. The change of control in Florida also prompted most of its Spanish Catholic population to leave. Most went to Cuba, including the entire governmental records from St. Augustine, although some Christianized Yamasee were resettled to the coast of Mexico.
+
+Question:
+Where did many Spanish Catholic move after British takeover in Florida?
+
+### OUTPUT
+Answer:",Articles 106 and 107,"['Most went to Cuba,', 'Most went to Cuba', 'Cuba', 'Cuba', 'Cuba']",0.115397,0.461587,8.67,2.17,6.221187,18.66356,3.4e-05,0,0.0

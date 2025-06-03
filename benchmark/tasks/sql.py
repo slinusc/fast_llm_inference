@@ -51,8 +51,8 @@ class SQLTask:
         # 1. System instruction
         system_message = (
             "You are a SQL query generation assistant. Given a natural language question, "
-            "generate the corresponding SQL query. Only generate valid SQL statements—no "
-            "explanations or extra text."
+            "generate the corresponding SQL statement. Only generate valid SQL statements—no "
+            "explanations or extra text. Always end the SQL statement with a semicolon.\n\n"
         )
 
         # 2. Few-shot demonstration

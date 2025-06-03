@@ -1,13 +1,66 @@
 import re, string
 
-_tok_re  = re.compile(r"\S+")
-_sent_re = re.compile(r"[.!?…]+")
+def tok_cnt_sql(text: str) -> int:
+    """
+    Count tokens in an SQL query (or multiple statements).
+    Returns the number of non‐whitespace, non‐comment tokens after sqlparse.lexing.
+    """
+    # Parse into one or more Statement objects
+    parsed = sqlparse.parse(text)
+    if not parsed:
+        return 0
 
-def tok_cnt(text: str) -> int:
-    return len(_tok_re.findall(text))
+    # We’ll just tokenize every statement in the tuple and flatten them
+    count = 0
+    for stmt in parsed:
+        # stmt.tokens is a TokenList; flatten() yields every subtoken
+        for tk in stmt.flatten():
+            # Skip pure whitespace or comments
+            if tk.ttype is Whitespace or tk.ttype is Comment:
+                continue
+            # Everything else (Keyword, Name, Number, Punctuation, Operator, etc.) counts
+            count += 1
+    return count
 
-def sent_cnt(text: str) -> int:
-    return max(len(_sent_re.findall(text)), 1)
+
+def sent_cnt_sql(text: str) -> int:
+    """
+    Count “statements” in an SQL string by asking sqlparse to split into Statement objects.
+    Each semicolon (or run of semicolons) produces a new Statement in sqlparse.parse().
+    """
+    parsed = sqlparse.parse(text)
+    # Filter out any empty statements that contain only whitespace
+    nonempty = [stmt for stmt in parsed if not stmt.is_whitespace]
+    return len(nonempty)
+
+    
+
+def tok_cnt(text: str, mode: str = "qa") -> int:
+    """
+    Count tokens in `text`.
+      • mode="sql": identifiers or single-char punctuation (for SQL).
+    """
+    if mode == "sql":
+        # matches identifiers/numbers or any of ; ( ) , = * < >
+        return tok_cnt_sql(text)
+    else:
+        return len(text.split())
+
+
+# ── Sentence/Statement Counters ──
+
+def sent_cnt(text: str, mode: str = "qa") -> int:
+    """
+    Count “sentences” in `text`.
+      • mode="sql": count SQL statements separated by semicolons.
+    """
+    if mode == "sql":
+        # count semicolons (each ';' marks end of a statement)
+        return text.count(";")
+    else:
+        # count runs of . ! ? or ellipsis
+        return len(re.findall(r"[.!?…]+", text))
+
 
 def chunker(seq, size):
             for i in range(0, len(seq), size):
@@ -32,9 +85,6 @@ def clean_prediction(prediction: list[str]) -> list[str]:
 
         # 3) Remove anything after the first newline (in the stripped string)
         ans = ans.split("\n", 1)[0]
-
-        # 4) Strip again and remove any trailing periods
-        ans = ans.strip().rstrip(".")
 
         cleaned.append(ans)
     return cleaned

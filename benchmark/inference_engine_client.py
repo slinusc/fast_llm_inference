@@ -16,15 +16,17 @@ class InferenceEngineClient:
         self.default_model = "mistralai/Mistral-7B-Instruct-v0.3"
         self._launcher_proc = None
 
-    def launch(self, backend: str, model_path: str, timeout: float = 500.0):
+    
+
+    def launch(self, backend: str, model: str, timeout: float = 500.0):
         """
         1) Starts your existing launch_engine.sh in a Popen (non-blocking).
-        2) Polls `http://127.0.0.1:23333/v1/completions` every second
-           with a minimal request until we get HTTP 200 (or timeout).
+        2) Polls `http://127.0.0.1:23333/v1/models` every 2 seconds
+           until the desired model shows up (or timeout).
         
         :param backend: One of {tgi, vllm, mii, sglang, lmdeploy}
-        :param model_path: HF model ID or local path
-        :param timeout: Max seconds to wait for HTTP 200 before raising.
+        :param model: HF model ID or local path
+        :param timeout: Max seconds to wait for the model to appear before raising.
         """
         script_path = os.path.join(os.getcwd(), "benchmark/launch_engine.sh")
         if not os.path.isfile(script_path):
@@ -33,12 +35,10 @@ class InferenceEngineClient:
             raise PermissionError(f"'{script_path}' is not executable (chmod +x missing).")
 
         # 1) Start the launcher in a subprocess.
-        #    Because your script does `docker run --rm ...` (no "-d"), it will block in the foreground.
-        #    Running it under Popen lets Python continue while Docker is starting.
         cmd = [
             script_path,
             f"--engine={backend}",
-            f"--model={model_path}"
+            f"--model={model}"
         ]
         self._launcher_proc = subprocess.Popen(
             cmd,
@@ -46,45 +46,38 @@ class InferenceEngineClient:
             stderr=subprocess.DEVNULL
         )
 
-        # 2) Poll /v1/completions until we get 200 or timeout.
-        url = "http://127.0.0.1:23333/v1/completions"
-        payload = {
-            "model": model_path,
-            "prompt": "",
-            "max_tokens": 1
-        }
-        headers = {"Content-Type": "application/json"}
-
+        # 2) Poll /v1/models until our model_id appears or timeout.
+        list_url = "http://127.0.0.1:23333/v1/models"
         start_time = time.time()
+
         while True:
-            # Check if the launcher process has died unexpectedly:
+            # If the launcher process died, report error
             if self._launcher_proc.poll() is not None:
-                # Exit code != 0 means the docker run failed
                 raise RuntimeError(
                     f"Launcher script exited early with code {self._launcher_proc.returncode}"
                 )
 
             try:
-                r = requests.post(url, json=payload, headers=headers, timeout=2.0)
-                if r.status_code == 200:
-                    # Server is ready!
-                    break
+                resp = requests.get(list_url, timeout=2.0)
+                if resp.status_code == 200:
+                    data = resp.json().get("data", [])
+                    # Check if our model_id is in the loaded list
+                    for entry in data:
+                        if entry.get("id") == model:
+                            # Model is loaded and ready to serve
+                            return
+                # If status is not 200 or model not found yet, keep waiting
             except requests.exceptions.RequestException:
-                # Connection refused, timeout, etc. → server not up yet
+                # Connection refused, etc. → server not up yet
                 pass
 
             elapsed = time.time() - start_time
             if elapsed > timeout:
-                # Abort if we've waited too long
                 raise TimeoutError(
-                    f"Waited {timeout}s for {url} to return 200, but never saw it. "
-                    "Is the container failing to start?"
+                    f"Waited {timeout}s for model '{model}' to appear at {list_url}, but it never did."
                 )
             time.sleep(2.0)
 
-        # At this point, container is up and /v1/completions returns 200.
-        # We simply return; the Docker container keeps running in the foreground.
-        return
 
     def completion(
         self,
@@ -115,6 +108,29 @@ class InferenceEngineClient:
 
         texts = [c.text for c in resp.choices]
         return texts if is_batch else texts[0]
+
+    def warmup(self, model: str | None = None, num_iters: int = 3):
+        """
+        Send a few small dummy requests to load the model into memory and
+        JIT any kernels so that subsequent inference calls are faster.
+        :param model: HF model ID or local path; defaults to self.default_model
+        :param num_iters: Number of warmup calls to make
+        """
+        model_id = model or self.default_model
+        dummy_prompt = "Warmup"
+
+        for _ in range(num_iters):
+            try:
+                _ = self.client.completions.create(
+                    model=model_id,
+                    prompt=dummy_prompt,
+                    max_tokens=1,
+                    temperature=0.1,
+                )
+            except Exception:
+                # If the server isn't ready yet, retry after a short sleep
+                time.sleep(1.0)
+                continue
 
     def measure_ttft(self) -> float:
         """

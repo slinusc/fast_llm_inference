@@ -1,17 +1,17 @@
 # choose one of: huggingface, vllm, llama.cpp, deepspeed_mii, lmdeploy
-backend: sglang
+backend: tgi
 
 # path to your model directory or .gguf file
 model_path: mistralai/Mistral-7B-Instruct-v0.3
 model_name: Mistral-7B-Instruct-v0.3
 
 # task & scenario
-task: qa    # or "qa", "sql"
+task: qa    # or "qa", "sql", "summarization"
 scenario: batch        # "single", "batch", or "server"
 
 # only for batch/single
-samples: 8
-batch_size: 2
+samples: 16
+batch_size: 4
 
 # only for server
 # run_time: 30
