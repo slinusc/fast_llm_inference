@@ -100,13 +100,7 @@ class SQLTask:
 
     def quality_metrics(self, generated, reference):
 
-        def normalize_answer(s):
-            import re, string
-            s = s.lower()
-            s = re.sub(r'\b(a|an|the)\b', ' ', s)
-            s = s.translate(str.maketrans('', '', string.punctuation))
-            s = re.sub(r'\s+', ' ', s)
-            return s.strip()
+        from ..utils import normalize_answer
 
         def ast_equal(sql1: str, sql2: str) -> int:
             try:

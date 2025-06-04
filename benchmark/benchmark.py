@@ -1,5 +1,5 @@
 import time
-import requests  # ensure requests is actually used
+from datetime import datetime
 import threading
 import os
 import torch
@@ -234,21 +234,6 @@ class ModelBenchmark:
         }
         return pd.DataFrame([meta])
 
-    def _prepare_prompts(self, task_, scenario, samples, run_time, rps):
-        """
-        Generate prompts, refs, and timestamps (server uses scheduling).
-        """
-        if scenario in ("single", "batch"):
-            prompts, refs = task_.generate_prompts(num_examples=samples)
-            sched_ts = [0.0] * len(prompts)
-        else:
-            est = max(int(rps * run_time * 2) + 10, 1)
-            ia = numpy_rng.exponential(scale=1.0 / rps, size=est)
-            arrivals = np.cumsum(ia)
-            arrivals = arrivals[arrivals <= run_time]
-            prompts, refs = task_.generate_prompts(num_examples=len(arrivals))
-            sched_ts = list(arrivals)
-        return prompts, refs, sched_ts
 
     def _batch_generator(
         self,
@@ -366,6 +351,9 @@ class ModelBenchmark:
         elif task == "sql":
             from benchmark.tasks.sql import SQLTask
             task_ = SQLTask()
+        elif task == "long_context_qa":
+            from benchmark.tasks.long_context import LongContextQATask
+            task_ = LongContextQATask()
         else:
             raise ValueError(f"Task {task!r} not supported.")
 
@@ -387,6 +375,10 @@ class ModelBenchmark:
                 batch_size=batch_size or 0,
                 num_queries= samples or 0
             )
+        elif scenario == "long_context":
+            meta_df = meta_df.assign(
+                num_queries_per_context=samples or 0,
+            )
         else:
             meta_df = meta_df.assign(
                 num_queries=samples or 0
@@ -399,10 +391,11 @@ class ModelBenchmark:
             )
             events = list(zip(sched_ts, prompts, refs, user_ids))
             events.sort(key=lambda x: x[0])
-        elif scenario == "batch":
-            prompts, refs, _ = self._prepare_prompts(task_, "batch", samples or 0, None, None)
-        else:
-            prompts, refs, _ = self._prepare_prompts(task_, scenario, samples or 0, run_time, None)
+        elif scenario in ["batch", "single"]:
+            prompts, refs = task_.generate_prompts(num_examples=samples or 0)
+        elif scenario == "long_context":
+            prompts, refs, lengths, crs = task_.generate_prompts(num_samples_per_level=samples or 0)
+
 
         # 5) start metrics monitor
         global_readings = {"memory": [], "power": [], "util": [], "cpu": [], "ram": []}
@@ -458,6 +451,29 @@ class ModelBenchmark:
                         "reference": ref,
                         "generation_time": gen_time / len(ps) if ps else 0,
                     })
+        
+        elif scenario == "long_context":
+            for prompt, ref, length, crs in zip(prompts, refs, lengths, crs):
+                t0 = time.time()
+                try:
+                    raw_out = self.generate([prompt])[0]
+                    success = True
+                except Exception as e:
+                    raw_out = str(e)
+                    success = False
+
+                gen_time = time.time() - t0
+
+                intermediate_records.append({
+                    "context_range": crs,      # e.g. "3k" or "4k"
+                    "length": length,         # original context length in tokens
+                    "prompt": prompt,
+                    "generated_raw": raw_out,
+                    "reference": ref,
+                    "generation_time": gen_time,
+                    "successful": success
+                })
+
 
         else:  # single or other non-server, non-batch scenario
             for prompt, ref in zip(prompts, refs):
@@ -514,6 +530,18 @@ class ModelBenchmark:
             avg_power_w = peak_power_w = 0
             total_energy_wh = 0.0
 
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        readings_csv_path = f"/home/ubuntu/fast_llm_inference/results_benchmark/readings/ts_{self.backend}_{self.model_name}_{scenario}_{task}_{timestamp}.csv"
+
+        readings_df = pd.DataFrame({
+            "gpu_memory_mb": global_readings["memory"],
+            "gpu_power_w": global_readings["power"],
+            "gpu_util_pct": global_readings["util"],
+            "cpu_util_pct": global_readings["cpu"],
+            "ram_mb": global_readings["ram"]
+        })
+        readings_df.to_csv(readings_csv_path, index=False)
+
         # 10) assemble run_report
         run_report = meta_df.copy().drop(columns=["batch_id"], errors="ignore")
 
@@ -548,7 +576,7 @@ class ModelBenchmark:
 
         for rec in intermediate_records:
             generated = clean_prediction([rec["generated_raw"]])[0]
-            nt = tok_cnt(generated, mode = scenario)     # number of tokens generated
+            nt = tok_cnt(generated, self.model_path)     # number of tokens generated
             ns = sent_cnt(generated, mode = scenario)    # number of sentences generated
             gen_time = rec["generation_time"]
 
@@ -582,6 +610,12 @@ class ModelBenchmark:
                     "send_time":          rec["send_time"],       # when request was received
                     "start_time":         rec["start_time"],      # when generation started
                     "scheduled_ts":       rec["scheduled_ts"],    # when the request was scheduled
+                }
+            if scenario == "long_context":
+                final_rec = {
+                    "context_range":     rec["context_range"],   # e.g. "3k" or "4k"
+                    "length":            rec["length"] + 160 + 10, # original context length in tokens + 153 for the prompt + 10 for the question
+                    "successful":        rec['successful'],      # whether generation was successful
                 }
             else:
                 final_rec = {
@@ -626,8 +660,8 @@ class ModelBenchmark:
     def run(
         self,
         *,
-        task: str,
-        scenario: str,
+        scenario: str = "server",
+        task: Optional[str] = None,
         samples: Optional[int] = None,
         batch_size: Optional[int] = None,
         run_time: Optional[float] = None,
@@ -637,9 +671,9 @@ class ModelBenchmark:
         quality_metric: bool = True
     ):
         # Validate scenario name
-        if scenario not in ("server", "batch", "single"):
+        if scenario not in ("server", "batch", "single", "long_context"):
             raise ValueError(
-                f"Unsupported scenario: {scenario!r}. Supported scenarios: 'server', 'batch', 'single'."
+                f"Unsupported scenario: {scenario!r}. Supported scenarios: 'server', 'batch', 'single', 'long_context."
             )
 
         # SERVER scenario: require run_time, disallow samples or batch_size
@@ -660,9 +694,16 @@ class ModelBenchmark:
                 raise ValueError("For 'batch' scenario, do not set 'run_time'; run_time is only for 'server'.")
 
         # SINGLE scenario: ignore samples and batch_size and run_time; enforce batch_size = 1
-        else:  # scenario == "single"
+        elif scenario == "single":
             batch_size = 1
             run_time = None  # not used in single mode
+        
+        else:
+            # LONG_CONTEXT scenario: samples is the number of queries per context
+            if samples is None:
+                raise ValueError("For 'long_context' scenario, 'samples' must be specified as queries per context.")
+            if batch_size is not None:
+                raise ValueError("For 'long_context' scenario, do not set 'batch_size'; it is not applicable.")
 
         return self._run_scenario(
             task=task,

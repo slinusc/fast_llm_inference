@@ -1,50 +1,25 @@
 import re, string
+import transformers
+from typing import Dict
 
-def tok_cnt_sql(text: str) -> int:
-    """
-    Count tokens in an SQL query (or multiple statements).
-    Returns the number of non‐whitespace, non‐comment tokens after sqlparse.lexing.
-    """
-    # Parse into one or more Statement objects
-    parsed = sqlparse.parse(text)
-    if not parsed:
-        return 0
+# Cache tokenizers so repeated calls with the same model_name don’t reload each time
+_tokenizer_cache: Dict[str, transformers.PreTrainedTokenizerFast] = {}
 
-    # We’ll just tokenize every statement in the tuple and flatten them
-    count = 0
-    for stmt in parsed:
-        # stmt.tokens is a TokenList; flatten() yields every subtoken
-        for tk in stmt.flatten():
-            # Skip pure whitespace or comments
-            if tk.ttype is Whitespace or tk.ttype is Comment:
-                continue
-            # Everything else (Keyword, Name, Number, Punctuation, Operator, etc.) counts
-            count += 1
-    return count
-
-
-def sent_cnt_sql(text: str) -> int:
+def tok_cnt(text: str, model_name: str) -> int:
     """
-    Count “statements” in an SQL string by asking sqlparse to split into Statement objects.
-    Each semicolon (or run of semicolons) produces a new Statement in sqlparse.parse().
+    Returns the number of tokens in `text` according to the tokenizer
+    for the given `model_name`. Tokenization always runs on CPU.
     """
-    parsed = sqlparse.parse(text)
-    # Filter out any empty statements that contain only whitespace
-    nonempty = [stmt for stmt in parsed if not stmt.is_whitespace]
-    return len(nonempty)
+    # Load (or retrieve from cache) the tokenizer for this model
+    if model_name not in _tokenizer_cache:
+        _tokenizer_cache[model_name] = transformers.AutoTokenizer.from_pretrained(
+            model_name, use_fast=True
+        )
+    tokenizer = _tokenizer_cache[model_name]
 
-    
-
-def tok_cnt(text: str, mode: str = "qa") -> int:
-    """
-    Count tokens in `text`.
-      • mode="sql": identifiers or single-char punctuation (for SQL).
-    """
-    if mode == "sql":
-        # matches identifiers/numbers or any of ; ( ) , = * < >
-        return tok_cnt_sql(text)
-    else:
-        return len(text.split())
+    # Tokenize without adding special tokens and return length
+    encoded = tokenizer(text, add_special_tokens=False)
+    return len(encoded["input_ids"])
 
 
 # ── Sentence/Statement Counters ──
@@ -53,13 +28,15 @@ def sent_cnt(text: str, mode: str = "qa") -> int:
     """
     Count “sentences” in `text`.
       • mode="sql": count SQL statements separated by semicolons.
+      • mode="qa" (default): count punctuation-based sentence boundaries.
+    Returns at least 1.
     """
     if mode == "sql":
-        # count semicolons (each ';' marks end of a statement)
-        return text.count(";")
+        # In SQL mode, assume minimum 1 statement even if no semicolon
+        return 1
     else:
-        # count runs of . ! ? or ellipsis
-        return len(re.findall(r"[.!?…]+", text))
+        count = len(re.findall(r"[.!?…]+", text))
+        return max(count, 1)
 
 
 def chunker(seq, size):
@@ -67,12 +44,17 @@ def chunker(seq, size):
                 yield seq[i : i + size]
 
 def normalize_answer(s: str) -> str:
-            
-            s = s.lower()
-            s = re.sub(r'\b(a|an|the)\b', ' ', s)
-            s = s.translate(str.maketrans('', '', string.punctuation))
-            s = re.sub(r'\s+', ' ', s)
-            return s.strip()
+    """
+    Lowercase, remove punctuation/articles, collapse whitespace.
+    Handles None inputs gracefully.
+    """
+    if s is None:
+        return ""
+    s = s.lower()
+    s = re.sub(r'\b(a|an|the)\b', ' ', s)
+    s = s.translate(str.maketrans('', '', string.punctuation))
+    s = ' '.join(s.split())
+    return s
 
 def clean_prediction(prediction: list[str]) -> list[str]:
     cleaned = []

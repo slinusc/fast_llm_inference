@@ -83,7 +83,7 @@ case "$ENGINE" in
         --model-id "$MODEL" \
         --trust-remote-code \
         --port "$PORT" \
-        --max-client-batch-size 128
+        --max-client-batch-size 512
     ;;
 
   vllm)
