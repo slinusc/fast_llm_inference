@@ -14,11 +14,11 @@ pynvml
 sqlglot
 
 # Backends (all supported)
-vllm
-lmdeploy>=0.2
-llama-cpp-python
-deepspeed
-deepspeed-mii
+#vllm
+#lmdeploy>=0.2
+#llama-cpp-python
+#deepspeed
+#deepspeed-mii
 
 # Optional formats and speed
 safetensors

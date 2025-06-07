@@ -179,6 +179,9 @@ Loading_your_LLM.ipynb
 tables.json
 
 results/
+results_benchmark/details/
+results_benchmark/readings/
+results_benchmark/run_report/
 
 results_benchmark/details/
 results_benchmark/readings/
