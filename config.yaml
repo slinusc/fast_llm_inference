@@ -12,8 +12,8 @@ scenario: batch        # "single", "batch", or "server"
 ##########################################################
 
 # only for batch
-# samples: 16
-# batch_size: 4
+samples: 16
+batch_size: 4
 
 ##########################################################
 
@@ -23,9 +23,9 @@ scenario: batch        # "single", "batch", or "server"
 ##########################################################
 
 # only for server
-run_time: 60
-concurrent_users: 10
-requests_per_user_per_min: 10
+#run_time: 60
+#concurrent_users: 10
+#requests_per_user_per_min: 10
 
 # optional overrides
 sample_interval: 0.1

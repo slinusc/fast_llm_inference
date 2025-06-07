@@ -26,3 +26,6 @@ safetensors
 # Needed for HuggingFace pipeline with stopping criteria
 accelerate  # pulled by transformers, listed here for completeness
 
+rich
+
+openai  # for OpenAI API compatibility
