@@ -13,10 +13,6 @@ import contextlib
 
 # Further suppression
 warnings.filterwarnings("ignore")
-logging.getLogger("transformers").setLevel(logging.ERROR)
-logging.getLogger("accelerate").setLevel(logging.ERROR)
-logging.getLogger("absl").setLevel(logging.ERROR)
-logging.getLogger("vllm").setLevel(logging.ERROR)
 
 from rich.console import Console
 from rich.table   import Table
@@ -84,9 +80,6 @@ def main():
     # In verbose mode, re-enable warnings & logs
     if args.verbose:
         warnings.resetwarnings()
-        logging.getLogger("transformers").setLevel(logging.INFO)
-        logging.getLogger("accelerate").setLevel(logging.INFO)
-        logging.getLogger("absl").setLevel(logging.INFO)
         logging.getLogger("benchmark").setLevel(logging.INFO)
 
         report, details = run_benchmark(cfg, verbose=True)

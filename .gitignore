@@ -180,4 +180,8 @@ tables.json
 
 results/
 
+results_benchmark/details/
+results_benchmark/readings/
+results_benchmark/run_report/
+
 models/

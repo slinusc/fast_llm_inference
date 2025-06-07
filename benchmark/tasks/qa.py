@@ -2,6 +2,7 @@ import random
 from datasets import load_dataset
 import re
 import string
+from ..utils import normalize_answer
 
 class QATask:
     """
@@ -74,20 +75,11 @@ class QATask:
             f"{output_block}"
         )
 
-    @staticmethod
-    def normalize_answer(s):
-        """Lowercase, remove punctuation, articles, and normalize whitespace."""
-        s = s.lower()
-        s = re.sub(r'\b(a|an|the)\b', ' ', s)  # remove articles
-        s = s.translate(str.maketrans('', '', string.punctuation))  # remove punctuation
-        s = re.sub(r'\s+', ' ', s)  # collapse multiple spaces
-        return s.strip()
-
 
     def compute_exact_match(self, prediction, ground_truths):
         """Exact match: 1 if prediction is in ground_truths, else 0."""
-        prediction = self.normalize_answer(prediction)
-        ground_truths = [self.normalize_answer(gt) for gt in ground_truths]
+        prediction = normalize_answer(prediction)
+        ground_truths = [normalize_answer(gt) for gt in ground_truths]
 
         return int(prediction in ground_truths)
 
@@ -95,7 +87,7 @@ class QATask:
     def compute_f1(self, prediction, ground_truths):
         """Compute the maximum F1 over all ground truths."""
         def get_tokens(s):
-            return self.normalize_answer(s).split()
+            return normalize_answer(s).split()
 
         pred_tokens = get_tokens(prediction)
         if not pred_tokens:

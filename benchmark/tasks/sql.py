@@ -8,7 +8,7 @@ class SQLTask:
     A class to handle the SQL generation task using the Spider dataset.
     """
 
-    def __init__(self, tables_path="/home/ubuntu/fast_llm_inference/tables.json"):
+    def __init__(self, tables_path="/home/ubuntu/fast_llm_inference/benchmark/lookup/tables.json"):
         random.seed(42)
         self.dataset = list(load_dataset("spider", split="validation"))
         self.tables_path = tables_path
@@ -51,8 +51,8 @@ class SQLTask:
         # 1. System instruction
         system_message = (
             "You are a SQL query generation assistant. Given a natural language question, "
-            "generate the corresponding SQL query. Only generate valid SQL statements—no "
-            "explanations or extra text."
+            "generate the corresponding SQL statement. Only generate valid SQL statements—no "
+            "explanations or extra text. Always end the SQL statement with a semicolon.\n\n"
         )
 
         # 2. Few-shot demonstration
@@ -100,13 +100,7 @@ class SQLTask:
 
     def quality_metrics(self, generated, reference):
 
-        def normalize_answer(s):
-            import re, string
-            s = s.lower()
-            s = re.sub(r'\b(a|an|the)\b', ' ', s)
-            s = s.translate(str.maketrans('', '', string.punctuation))
-            s = re.sub(r'\s+', ' ', s)
-            return s.strip()
+        from ..utils import normalize_answer
 
         def ast_equal(sql1: str, sql2: str) -> int:
             try:
