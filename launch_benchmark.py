@@ -1,3 +1,36 @@
+#!/usr/bin/env python3
+"""CLI wrapper for ModelBenchmark.
+
+This version aligns with the updated ``ModelBenchmark.run`` signature that
+now supports four scenarios (server, batch, single, long_context) and the
+new parameters ``concurrent_users`` and ``requests_per_user_per_min``.
+
+Usage
+-----
+    benchmark_cli.py config.yaml [-v]
+
+The YAML config **must** include at least these keys:
+
+* backend  – inference backend identifier (e.g. "vllm", "tgi")
+* model_path – HF repo, GGUF path, etc. (whatever your backend expects)
+* task – benchmark task (e.g. "summarization", "qa")
+* scenario – one of "server", "batch", "single", "long_context"
+
+Optional keys (all passed straight to ``ModelBenchmark.run``):
+
+* samples – int, sample count (batch or long_context only)
+* batch_size – int, batch size (batch scenario only)
+* run_time – float, seconds to run (server only)
+* concurrent_users – int, number of simultaneous users (server only)
+* requests_per_user_per_min – float, request rate per user (server only)
+* sample_interval – float, seconds between profiler samples
+* quality_metric – bool, whether to compute quality metrics
+* max_batch_size – int, cap for dynamic batching backends
+
+All console output except the rich spinner is suppressed unless ``-v`` is
+passed so you can embed the tool in scripts without extra noise.
+"""
+
 import os
 import sys
 import argparse
@@ -46,11 +79,10 @@ def run_benchmark(cfg: Dict[str, Any], verbose: bool):
         samples=cfg.get("samples"),
         batch_size=cfg.get("batch_size"),
         run_time=cfg.get("run_time"),
-        concurrent_users=cfg.get("concurrent_users"),
-        requests_per_user_per_min=cfg.get("requests_per_user_per_min"),
+        concurrent_users=cfg.get("concurrent_users", 32),
+        requests_per_user_per_min=cfg.get("requests_per_user_per_min", 60.0),
         sample_interval=cfg.get("sample_interval", 0.1),
         quality_metric=cfg.get("quality_metric", True),
-        max_batch_size=cfg.get("max_batch_size", 512),
     )
 
 
