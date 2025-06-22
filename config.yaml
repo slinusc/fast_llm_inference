@@ -1,46 +1,34 @@
-# choose one of: tgi, vllm, sglang, lmdeploy
-backend: lmdeploy
+# ───────────────────────────────────
+#  MODEL / BACKEND MATRIX
+# ───────────────────────────────────
+backend:         [tgi, vllm, sglang, lmdeploy]
 
-# huggingface model path
-model_path: Qwen/Qwen2.5-7B-Instruct
+hf_model:
+  - mistralai/Mistral-7B-Instruct-v0.3
+  #- Qwen/Qwen2.5-7B-Instruct
+  #- meta-llama/Llama-3.1-8B-Instruct
 
-# model name
-model_name: Qwen2.5-7B-Instruct
+# ───────────────────────────────────
+#  EXPERIMENT SPACE
+# ───────────────────────────────────
+task:       [summarization, sql, qa]
+scenario:   [single, batch, server]
 
-# choose a scenario of: "server", "single", "batch", "long_context"
-scenario: batch        
+# ----------------
+# shared defaults
+# ----------------
+samples:          256           # used in single & batch
+sample_interval:  0.1
+quality_metric:   true
 
-# choose a task of: "summarization", "sql", "qa", "long_context_qa"
-task: qa 
+# ----------------
+# batch-scenario specific
+# ----------------
+batch_size: [16, 32, 64] 
 
-# sample interval in seconds
-sample_interval: 0.1
-
-# tracking quality metrics
-quality_metric: true
-
-##########################################################
-
-# only for batch
-samples: 64
-batch_size: 32
-
-##########################################################
-
-# only for single
-# samples: 128
-
-##########################################################
-
-# only for server
-#run_time: 60
-#concurrent_users: 10
-#requests_per_user_per_min: 10
-
-##########################################################
-
-# only for long context qa
-# number of samples per context length (3k, 4k, 8k, 16k, 32k tokens)
-# samples: 100
-
-##########################################################
+# ----------------
+# server-scenario specific
+# ----------------
+run_time: 300 # seconds
+concurrent_users: [8, 16, 32]
+requests_per_user_per_min: 12

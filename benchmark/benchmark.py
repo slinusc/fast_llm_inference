@@ -213,26 +213,42 @@ class ModelBenchmark:
         return round(amort_cost + energy_cost, 6)
 
     def _initialize(self, task: str, scenario: str):
-        """
-        Launch the inference engine and measure startup + ttft.
-        """
+        # ── Fast-path: already launched ───────────────────────────
+        if getattr(self, "_already_launched", False):
+            # clone cached base row to avoid mutating the original
+            meta = self._meta_base.copy()
+            meta["task"]      = task
+            meta["scenario"]  = scenario
+            # no cold-start fields change here
+            return meta
+
+        # ── First launch: cold start ──────────────────────────────
         t0 = time.time()
         self.iec.launch(backend=self.backend, model=self.model_path)
         startup = time.time() - t0
-        self.model_size = 0  # TODO: populate when available
+
+        # optional warm-up
         self.iec.warmup()
         ttft = self.iec.measure_ttft()
+
+        self.model_size = 0  # TODO: compute real size if needed
+
         meta = {
-            "model_name": self.model_name,
+            "model_name":   self.model_name,
             "model_size_mb": self.model_size,
-            "task": task,
-            "scenario": scenario,
-            "backend": self.backend,
-            "startup": round(startup, 4),
-            "ttft_sec": round(ttft, 4),
-            "coldstart": round(startup + ttft, 4)
+            "task":          task,
+            "scenario":      scenario,
+            "backend":       self.backend,
+            "startup":       round(startup, 4),
+            "ttft_sec":      round(ttft, 4),
+            "coldstart":     round(startup + ttft, 4)
         }
-        return pd.DataFrame([meta])
+
+        # ── cache for later calls ─────────────────────────────────
+        self._already_launched = True
+        self._meta_base = pd.DataFrame([meta])  # store DataFrame copy
+        return self._meta_base
+
 
 
     def _batch_generator(
@@ -650,8 +666,8 @@ class ModelBenchmark:
                 run_report[f"avg_{col}"] = round(detail_nums[col].mean(), 6)
 
         # 13) Close the inference engine client
-        if self.iec:
-            self.iec.close()
+        # if self.iec:
+        #    self.iec.close()
 
         # 14) Return the run report and details DataFrame
         return run_report, details_df
