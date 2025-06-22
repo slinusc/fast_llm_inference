@@ -17,7 +17,7 @@ scenario:   [single, batch, server]
 # ----------------
 # shared defaults
 # ----------------
-samples:          256           # used in single & batch
+samples:          128           # used in single & batch
 sample_interval:  0.1
 quality_metric:   true
 

@@ -183,3 +183,5 @@ results_benchmark/
 configs/
 
 models/
+
+nohup.out
