@@ -11,10 +11,10 @@ It enables researchers and practitioners to analyze **latency, throughput, quali
 When deploying LLMs locally, there’s no one-size-fits-all. Bench360 helps answer:
 
 - **Which model + quant format** yields the best performance for my use case?
-- **What’s the latency/throughput trade-off** for vLLM vs. llama.cpp vs. TGI?
+- **What’s the latency/throughput trade-off** for vLLM vs. TGI vs. SGLang vs. LMDeploy?
 - **How do batch and concurrent scenarios behave under load?**
 - **How much GPU memory, power, and time per query do I save with quantization?**
-- **Is the quality degradation from INT4 acceptable on SQL generation?**
+- **Is the quality degradation from INT4 acceptable on e.g. SQL generation?**
 
 ---
 
@@ -23,9 +23,9 @@ When deploying LLMs locally, there’s no one-size-fits-all. Bench360 helps answ
 | Category            | Description                                                                 |
 |---------------------|-----------------------------------------------------------------------------|
 | **Tasks**           | Summarization, Question Answering (QA), Text-to-SQL                         |
-| **Scenarios**       | `single`, `batch`, and `server` (Poisson arrival model)                     |
+| **Scenarios**       | `single`, `batch`, and `server` (Poisson arrival multi-threads)             |
 | **Metrics**         | Latency (ATL/GL), Throughput (TPS, SPS), GPU/CPU util, Energy, Quality (F1, ROUGE, AST) |
-| **Backends**        | vLLM, Hugging Face, llama.cpp, DeepSpeed-MII, LMDeploy                      |
+| **Backends**        | vLLM, TGI, SGLang, LMDeploy                                                 |
 | **Quantization**    | Support for FP16, INT8, INT4 (GPTQ, AWQ, GGUF)                              |
 | **Cost Estimation** | Energy and amortized GPU cost per request                                   |
 | **Output Format**   | CSV (run-level + per-sample details), logs, and visual plots ready          |
@@ -71,10 +71,6 @@ model_name: Mistral-7B
 task: qa
 scenario: single
 samples: 256
-```
-
-```bash
-python launch_benchmark.py config.yaml
 ```
 
 ---
