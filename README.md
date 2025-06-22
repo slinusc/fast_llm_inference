@@ -11,10 +11,10 @@ It enables researchers and practitioners to analyze **latency, throughput, quali
 When deploying LLMs locally, there’s no one-size-fits-all. Bench360 helps answer:
 
 - **Which model + quant format** yields the best performance for my use case?
-- **What’s the latency/throughput trade-off** for vLLM vs. llama.cpp vs. TGI?
+- **What’s the latency/throughput trade-off** for vLLM vs. TGI vs. SGLang vs. LMDeploy?
 - **How do batch and concurrent scenarios behave under load?**
 - **How much GPU memory, power, and time per query do I save with quantization?**
-- **Is the quality degradation from INT4 acceptable on SQL generation?**
+- **Is the quality degradation from INT4 acceptable on e.g. SQL generation?**
 
 ---
 
