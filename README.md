@@ -1,197 +1,174 @@
-# Bench360 — Benchmarking Local LLMs from 360°
+You're right — let's make it clearer, tighter, and more structured like a proper GitHub project README that balances **clarity**, **credibility**, and **usability** for both researchers and engineers.
 
-**Bench360** is a modular benchmarking suite for local LLM inference. It offers a full-stack, extensible pipeline to evaluate the latency, throughput, quality, and cost of large language model inference on consumer and enterprise GPUs.
+Here’s a **refined, professional README.md** for **Bench360**, with:
 
-When deploying a large language model (LLM) locally, practitioners must navigate a range of critical trade-offs. Key questions include:
-
-* **Which model architecture** is best suited for my specific task—such as summarization, question answering, or text-to-SQL?
-* **What model size** offers the right balance between output quality and system limitations (e.g., available VRAM, latency)?
-* **Should I prioritize speed or efficiency** by using reduced precision formats like FP16, or apply more aggressive quantization techniques (e.g., 8-bit, 4-bit)?
-* **Which inference backend**—such as vLLM, llama.cpp, Hugging Face Transformers, or DeepSpeed—delivers the best performance for my use case (e.g., low-latency single-stream, high-throughput batch processing, or multi-user server deployment)?
-* **How does quantization affect model accuracy in my scenario**, and is the quality degradation acceptable? For example, should we deploy a 7B model in FP16, a 14B model in 8-bit, or a 27B model in 4-bit when VRAM is limited?
-* **What hardware configuration** (e.g., consumer GPU vs. data center card) gives the best cost-performance ratio?
-
-Choosing the right combination of architecture, precision, backend, and hardware is essential for optimizing local LLM inference performance, cost, and quality. **Bench360** answers these questions by providing a unified benchmarking framework that covers every part of the local inference stack—not quality or performance metrics. It is designed for model evaluators, systems researchers, and AI engineers who want to understand the trade-offs of real-world deployment. It enables reproducible, apples-to-apples comparison between hardware, models, optimization techniques, and inference engines under realistic scenarios.
-
-## System Overview
-
-[![Bench360 Diagram Preview](benchmark/docs/bench360-overview.png)](benchmark/docs/bench360-overview.pdf)
+* A concise intro for your thesis/work context.
+* Clean feature table & task/back-end matrix.
+* Minimal install instructions.
+* Distinct CLI usage patterns (single vs. multi).
+* Structured output overview.
+* Clear directory map.
 
 ---
 
-## Table of Contents
+````markdown
+# Bench360 – Local LLM Inference Benchmark Suite
 
-* [Features](#features)
-* [Prerequisites](#prerequisites)
-* [Installation](#installation)
-* [Cloning the Repository](#cloning-the-repository)
-* [Configuration (`config.yaml`)](#configuration-configyaml)
-* [CLI Usage](#cli-usage)
+**Bench360** is a modular benchmarking framework for evaluating **local LLM inference pipelines** across backends, quantization formats, model architectures, and deployment scenarios.
 
-  * [Basic Run (Quiet Mode)](#basic-run-quiet-mode)
-  * [Verbose Mode](#verbose-mode)
-* [Output](#output)
-* [Directory Structure](#directory-structure)
-* [Contributing](#contributing)
-* [License](#license)
+It enables researchers and practitioners to analyze **latency, throughput, quality, efficiency, and cost** in real-world tasks like summarization, QA, and SQL generation—under both consumer and data center conditions.
 
 ---
 
-## Features
+## 🔍 Why Bench360?
 
-* **Multi-backend support**: Hugging Face, vLLM, llama.cpp, DeepSpeed-MII, LMDeploy.
-* **Flexible scenarios**: single, batch, and server (Poisson arrival) modes.
-* **Supported tasks**: summarization, question answering (QA), and SQL generation.
-* **Quality metrics**: Task specific metrics like ROUGE, F1 or AST.
-* **Custom tasks**: easily add new tasks by implementing a Task class in `benchmark/tasks`.
-* **Latency**: measures average generation latency (e.g., ATL and GL metrics).
-* **Throughput**: measures tokens per second (TPS) and sentences per second (SPS).
-* **Resource monitoring**: GPU memory, GPU utilization, CPU usage, and power sampling via NVML.
-* **Cost estimation**: amortization + energy cost per query.
+When deploying LLMs locally, there’s no one-size-fits-all. Bench360 helps answer:
+
+- **Which model + quant format** yields the best performance for my use case?
+- **What’s the latency/throughput trade-off** for vLLM vs. llama.cpp vs. TGI?
+- **How do batch and concurrent scenarios behave under load?**
+- **How much GPU memory, power, and time per query do I save with quantization?**
+- **Is the quality degradation from INT4 acceptable on SQL generation?**
 
 ---
 
-## Prerequisites
+## ⚙️ Features
 
-* **OS**: Linux (tested on Ubuntu 22.04+)
-* **GPU**: NVIDIA with NVML drivers
-* **CUDA**: Version 12.xx
-* **Python**: 3.8 or newer
-
-Install the following system packages (Ubuntu example):
-
-```bash
-sudo apt-get update \
-    && sudo apt-get install -y python3 python3-venv python3-pip \
-       libllvm15 \
-       libcurl4 libssl-dev \
-       build-essential
-```
-
-Ensure your NVIDIA driver and `nvidia-smi` are installed and accessible.
+| Category            | Description                                                                 |
+|---------------------|-----------------------------------------------------------------------------|
+| **Tasks**           | Summarization, Question Answering (QA), Text-to-SQL                         |
+| **Scenarios**       | `single`, `batch`, and `server` (Poisson arrival model)                     |
+| **Metrics**         | Latency (ATL/GL), Throughput (TPS, SPS), GPU/CPU util, Energy, Quality (F1, ROUGE, AST) |
+| **Backends**        | vLLM, Hugging Face, llama.cpp, DeepSpeed-MII, LMDeploy                      |
+| **Quantization**    | Support for FP16, INT8, INT4 (GPTQ, AWQ, GGUF)                              |
+| **Cost Estimation** | Energy and amortized GPU cost per request                                   |
+| **Output Format**   | CSV (run-level + per-sample details), logs, and visual plots ready          |
 
 ---
 
-## Installation
+## 🧱 Installation
 
-1. **Clone** this repo (see next section).
-2. **Create** and activate a Python virtual environment:
+### Requirements
 
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate
-   ```
-3. **Install** dependencies:
+- OS: Ubuntu Linux
+- NVIDIA GPU with NVML support
+- CUDA 12.x
+- Python 3.8+
 
-   ```bash
-   pip install --upgrade pip
-   pip install -r requirements.txt
-   ```
----
-
-## Cloning the Repository
+### Setup
 
 ```bash
 git clone https://github.com/slinusc/fast_llm_inference.git
 cd fast_llm_inference
-```
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+````
+
+> Optional system dependencies:
+>
+> ```bash
+> sudo apt install libssl-dev libcurl4 build-essential libllvm15
+> ```
 
 ---
 
-## Configuration (`config.yaml`)
+## 🚀 Usage
 
-Create a YAML file (e.g. `config.yaml`) with the following structure:
+### ✅ Single Run
 
 ```yaml
-# Choose one: huggingface, vllm, llama.cpp, deepspeed_mii, lmdeploy
-backend: vllm
-
-# Local path to model directory or .gguf file
-model_path: /home/ubuntu/fast_llm_inference/models/llama-3.1-8B-Instruct
-model_name: llama-3.1-8B
-
-# Task to benchmark: summarization, qa, or sql
-task: summarization
-
-# Scenario: single, batch, or server
+# config.yaml
+backend: tgi
+hf_model: mistralai/Mistral-7B-Instruct-v0.3
+model_name: Mistral-7B
+task: qa
 scenario: single
-
-# For single
-samples: 128
-
-# For batch (choose only if scenario: batch)
-# batch_size: 16
-
-# For server mode (choose only if scenario: server)
-#run_time: 60                   # total wall‑clock seconds  
-#concurrent_users: 10           # number of concurrent user threads
-#requests_per_user_per_min: 10  # arrival rate (Poisson)
-
-# Common options
-sample_interval: 0.1       # telemetry sample interval (seconds)
-quality_metric: true       # enable quality metrics
+samples: 256
 ```
-
----
-
-## CLI Usage
-
-We provide a CLI script `launch_benchmark.py`. It reads your YAML config and runs the benchmark.
-
-### Basic Run (Quiet Mode)
-
-Suppresses all internal logs, just prints final summary:
 
 ```bash
 python launch_benchmark.py config.yaml
 ```
 
-### Verbose Mode
+---
 
-Show all logs, warnings, and detailed prints:
+### 🔁 Multi-run Sweep
+
+Use **lists** to define a Cartesian product:
+
+```yaml
+backend: [tgi, vllm]
+hf_model:
+  - mistralai/Mistral-7B-Instruct-v0.3
+  - Qwen/Qwen2.5-7B-Instruct
+task: [summarization, sql, qa]
+scenario: [single, batch, server]
+
+samples: 256
+batch_size: [16, 64]
+run_time: 300
+concurrent_users: [8, 16, 32]
+requests_per_user_per_min: 12
+```
 
 ```bash
-python launch_benchmark.py config.yaml --verbose
+python launch_benchmark.py config.yaml
 ```
 
 ---
 
-## Output
+## 📦 Output
 
-After the run completes, you’ll see:
+Each experiment generates:
 
-1. **Benchmark Summary** (vertical, human‑readable table) printed to your terminal.
-2. **Per‑query CSV** at `<output_prefix>_details.csv` (e.g. `results/llama-summ-batch_details.csv`).
+```
+results_<timestamp>/
+├── run_report/          # One CSV per experiment (summary)
+├── details/             # Per-query logs
+├── readings/            # GPU/CPU/power metrics
+└── failed_runs.log      # List of failed configs
+```
+
+Each filename includes:
+
+* backend
+* model
+* task
+* scenario
+* parameters (e.g. batch size, concurrent users)
+* config hash
+
+This enables reproducible comparisons & tracking.
 
 ---
 
-## Directory Structure
+## 🗂 Project Structure
 
 ```
 fast_llm_inference/
-├── benchmark/              # core benchmarking code
-│   ├── benchmark.py        # ModelBenchmark class
-│   ├── backends/           # wrappers for each inference backend
-│   ├── lookup/             # look up tables
-│   └── tasks/              # task definitions (summarization, QA, SQL)
-├── launch_benchmark.py     # CLI wrapper
-├── requirements.txt        # Python dependencies
-├── config.yaml.sample      # example config file
-└── README.md               # this file
+├── benchmark/
+│   ├── benchmark.py               # Main benchmarking logic
+│   ├── inference_engine_client.py # Backend launcher
+│   ├── tasks/                     # Task-specific eval logic
+│   ├── backends/                  # Inference wrapper modules
+├── launch_benchmark.py            # CLI entry point
+├── utils_multi.py                 # Multi-run config handling
+├── config.yaml                    # Example config file
+└── requirements.txt
 ```
 
 ---
 
-## Contributing
+## 🧪 Contributing
 
-Contributions welcome! Please:
-
-1. Fork and create a branch.
-2. Add tests or validate your changes.
-3. Submit a pull request.
+Pull requests, bug reports, and ideas are welcome!
+Fork the repo, create a feature branch, and submit your PR.
 
 ---
 
-## License
+## 📄 License
 
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+Bench360 is released under the [MIT License](LICENSE).
+
+```
