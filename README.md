@@ -1,16 +1,3 @@
-You're right — let's make it clearer, tighter, and more structured like a proper GitHub project README that balances **clarity**, **credibility**, and **usability** for both researchers and engineers.
-
-Here’s a **refined, professional README.md** for **Bench360**, with:
-
-* A concise intro for your thesis/work context.
-* Clean feature table & task/back-end matrix.
-* Minimal install instructions.
-* Distinct CLI usage patterns (single vs. multi).
-* Structured output overview.
-* Clear directory map.
-
----
-
 ````markdown
 # Bench360 – Local LLM Inference Benchmark Suite
 
