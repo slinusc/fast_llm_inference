@@ -114,22 +114,22 @@ model_name: llama-3.1-8B
 task: summarization
 
 # Scenario: single, batch, or server
-scenario: batch
+scenario: single
 
-# For batch/single mode
-data:
-  samples: 100
-  batch_size: 4
+# For single
+samples: 128
+
+# For batch (choose only if scenario: batch)
+# batch_size: 16
 
 # For server mode (choose only if scenario: server)
-# run_time: 30            # total wall‑clock seconds
-# requests_per_sec: 5     # arrival rate (Poisson)
-# max_batch_size: 8
+#run_time: 60                   # total wall‑clock seconds  
+#concurrent_users: 10           # number of concurrent user threads
+#requests_per_user_per_min: 10  # arrival rate (Poisson)
 
 # Common options
 sample_interval: 0.1       # telemetry sample interval (seconds)
 quality_metric: true       # enable quality metrics
-output_prefix: results/llama-summ-batch  # prefix for CSV output
 ```
 
 ---
