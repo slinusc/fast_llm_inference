@@ -26,6 +26,13 @@ from rich.progress import (
 from benchmark.utils_multi import load_multi_cfg
 from benchmark.benchmark import ModelBenchmark
 
+# ─── Silence native logs up‑front ────────────────────────────────
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+# Further suppression
+warnings.filterwarnings("ignore")
+
 console = Console(stderr=True)
 FAILED_LOG = ""
 
@@ -144,7 +151,6 @@ def _run_multi(yaml_path: str, verbose=False):
 
 # ───────────────────────────────────────── entry
 def main():
-    warnings.filterwarnings("ignore")
     _ensure_output_dirs()
 
     p = argparse.ArgumentParser(description="Robust benchmark launcher")

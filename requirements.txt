@@ -4,6 +4,7 @@ openai
 torch
 transformers
 pandas
+psutil
 
 # GPU monitoring
 pynvml

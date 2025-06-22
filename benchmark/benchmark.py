@@ -1,6 +1,7 @@
 import time
 from datetime import datetime
 import threading
+from pathlib import Path
 import os
 import torch
 import numpy as np
@@ -31,6 +32,10 @@ DEFAULT_SEED = 42
 random.seed(DEFAULT_SEED)
 numpy_rng = np.random.default_rng(DEFAULT_SEED)
 torch.manual_seed(DEFAULT_SEED)
+
+PROJECT_ROOT = Path(os.getenv("FASTLLM_HOME", Path(__file__).resolve().parents[1]))
+LOOKUP_DIR = PROJECT_ROOT / "benchmark" / "lookup"
+RESULTS_DIR = PROJECT_ROOT / "results_benchmark"
 
 class ModelBenchmark:
     def __init__(
@@ -186,7 +191,7 @@ class ModelBenchmark:
         inf_time_sec: float,
         power_watts: float = 0.0,
         electricity_usd_per_kwh: float = 0.31,
-        csv_path: str = "/home/ubuntu/fast_llm_inference/benchmark/lookup/nvidia_llm_gpus.csv"
+        csv_path: Path | str = LOOKUP_DIR / "nvidia_llm_gpus.csv"
     ) -> dict:
         """
         Estimate amortization + energy cost for a single LLM query.
@@ -547,7 +552,11 @@ class ModelBenchmark:
             total_energy_wh = 0.0
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        readings_csv_path = f"/home/ubuntu/fast_llm_inference/results_benchmark/readings/ts_{self.backend}_{self.model_name}_{scenario}_{task}_{timestamp}.csv"
+        readings_csv_path = (
+            RESULTS_DIR
+            / "readings"
+            / f"ts_{self.backend}_{self.model_name}_{scenario}_{task}_{timestamp}.csv"
+        )
 
         readings_df = pd.DataFrame({
             "gpu_memory_mb": global_readings["memory"],

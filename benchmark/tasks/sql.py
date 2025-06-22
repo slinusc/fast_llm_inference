@@ -10,7 +10,7 @@ class SQLTask:
 
     def __init__(self, tables_path="/home/ubuntu/fast_llm_inference/benchmark/lookup/tables.json"):
         random.seed(42)
-        self.dataset = list(load_dataset("spider", split="validation"))
+        self.dataset = list(load_dataset("spider", split="train"))
         self.tables_path = tables_path
 
     def generate_prompts(self, num_examples : int = 100):
