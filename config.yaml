@@ -1,24 +1,34 @@
-# choose one of: huggingface, vllm, llama.cpp, deepspeed_mii, lmdeploy
-backend: tgi
+# choose one of: tgi, vllm, sglang, lmdeploy
+backend: lmdeploy
 
-# path to your model directory or .gguf file
-model_path: mistralai/Mistral-7B-Instruct-v0.3
-model_name: Mistral-7B-Instruct-v0.3
+# huggingface model path
+model_path: Qwen/Qwen2.5-7B-Instruct
 
-# task & scenario
-task: qa    # or "qa", "sql", "summarization"
-scenario: batch        # "single", "batch", or "server"
+# model name
+model_name: Qwen2.5-7B-Instruct
+
+# choose a scenario of: "server", "single", "batch", "long_context"
+scenario: batch        
+
+# choose a task of: "summarization", "sql", "qa", "long_context_qa"
+task: qa 
+
+# sample interval in seconds
+sample_interval: 0.1
+
+# tracking quality metrics
+quality_metric: true
 
 ##########################################################
 
 # only for batch
-samples: 16
-batch_size: 4
+samples: 64
+batch_size: 32
 
 ##########################################################
 
 # only for single
-# samples: 16
+# samples: 128
 
 ##########################################################
 
@@ -27,9 +37,10 @@ batch_size: 4
 #concurrent_users: 10
 #requests_per_user_per_min: 10
 
-# optional overrides
-sample_interval: 0.1
-quality_metric: true
+##########################################################
 
-# prefix for output CSVs
-output_prefix: results_benchmark/llama31b_qa_batch
+# only for long context qa
+# number of samples per context length (3k, 4k, 8k, 16k, 32k tokens)
+# samples: 100
+
+##########################################################

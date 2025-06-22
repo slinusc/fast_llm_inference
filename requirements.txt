@@ -1,31 +1,15 @@
 # Core dependencies
+rich
+openai
 torch
 transformers
-datasets
-evaluate
-rouge-score
 pandas
-bitsandbytes
 
 # GPU monitoring
 pynvml
 
-# SQL parsing & AST comparison
+# evaluation
+datasets
+evaluate
+rouge-score
 sqlglot
-
-# Backends (all supported)
-#vllm
-#lmdeploy>=0.2
-#llama-cpp-python
-#deepspeed
-#deepspeed-mii
-
-# Optional formats and speed
-safetensors
-
-# Needed for HuggingFace pipeline with stopping criteria
-accelerate  # pulled by transformers, listed here for completeness
-
-rich
-
-openai  # for OpenAI API compatibility

@@ -39,6 +39,7 @@ import warnings
 import logging
 import contextlib
 from typing import Any, Dict
+from datetime import datetime
 
 # ─── Silence native logs up‑front ────────────────────────────────
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
@@ -151,10 +152,14 @@ def main():
     display_vertical(report)
 
     # ── Persist details CSV ────────────────────────────────────
-    prefix = cfg.get("output_prefix", f"{cfg['task']}_{cfg['scenario']}")
-    out_csv = f"{prefix}_details.csv"
-    details.to_csv(out_csv, index=False)
-    console.print(f"\nDetails → [bold]{out_csv}[/]")
+    prefix = f"{cfg['backend']}_{cfg['model_name']}_{cfg['task']}_{cfg['scenario']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    out_details = f"results_benchmark/details/{prefix}_details.csv"
+    out_report = f"results_benchmark/run_report/{prefix}_report.csv"
+
+    report.to_csv(out_report, index=False)
+    console.print(f"\nReport → [bold]{out_report}[/]")
+    details.to_csv(out_details, index=False)
+    console.print(f"\nDetails → [bold]{out_details}[/]")
 
 
 if __name__ == "__main__":

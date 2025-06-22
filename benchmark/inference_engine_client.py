@@ -13,8 +13,8 @@ class InferenceEngineClient:
     def __init__(self, base_url="http://localhost:23333/v1", api_key="none"):
         from openai import OpenAI
         self.client = OpenAI(api_key=api_key, base_url=base_url)
-        self.default_model = "mistralai/Mistral-7B-Instruct-v0.3"
         self._launcher_proc = None
+        self.model = None
 
     
 
@@ -65,6 +65,7 @@ class InferenceEngineClient:
                     for entry in data:
                         if entry.get("id") == model:
                             # Model is loaded and ready to serve
+                            self.model = model
                             return
                 # If status is not 200 or model not found yet, keep waiting
             except requests.exceptions.RequestException:
@@ -91,11 +92,11 @@ class InferenceEngineClient:
         """
         Send one or more prompts. :param prompt: string or list[str]
         """
-        model = model or self.default_model
+        model = model
         is_batch = isinstance(prompt, (list, tuple))
 
         resp = self.client.completions.create(
-            model=model,
+            model=self.model,
             prompt=prompt,
             temperature=temperature,
             max_tokens=max_tokens,
@@ -109,20 +110,20 @@ class InferenceEngineClient:
         texts = [c.text for c in resp.choices]
         return texts if is_batch else texts[0]
 
-    def warmup(self, model: str | None = None, num_iters: int = 3):
+    def warmup(self, num_iters: int = 3):
         """
         Send a few small dummy requests to load the model into memory and
         JIT any kernels so that subsequent inference calls are faster.
         :param model: HF model ID or local path; defaults to self.default_model
         :param num_iters: Number of warmup calls to make
         """
-        model_id = model or self.default_model
+
         dummy_prompt = "Warmup"
 
         for _ in range(num_iters):
             try:
                 _ = self.client.completions.create(
-                    model=model_id,
+                    model=self.model,
                     prompt=dummy_prompt,
                     max_tokens=1,
                     temperature=0.1,
@@ -142,11 +143,10 @@ class InferenceEngineClient:
             "healthcare, finance, education, and more. One of the most transformative "
             "technologies is"
         )
-        model = self.default_model
 
         start = time.time()
         stream_resp = self.client.completions.create(
-            model=model,
+            model=self.model,
             prompt=prompt,
             max_tokens=1,
             temperature=0.1,
@@ -206,3 +206,13 @@ class InferenceEngineClient:
             self.client.close()
         except Exception:
             pass
+
+
+if __name__ == "__main__":
+    ### ttft
+    client = InferenceEngineClient()
+    client.launch(backend="tgi", model="Qwen/Qwen2.5-7B-Instruct")
+    client.warmup()
+    ttft = client.measure_ttft()
+    print(f"TTFT: {ttft:.3f} seconds")
+    client.close()
