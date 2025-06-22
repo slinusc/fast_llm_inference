@@ -1,4 +1,3 @@
-````markdown
 # Bench360 – Local LLM Inference Benchmark Suite
 
 **Bench360** is a modular benchmarking framework for evaluating **local LLM inference pipelines** across backends, quantization formats, model architectures, and deployment scenarios.
