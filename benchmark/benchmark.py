@@ -636,7 +636,7 @@ class ModelBenchmark:
                     "start_time":         rec["start_time"],      # when generation started
                     "scheduled_ts":       rec["scheduled_ts"],    # when the request was scheduled
                 }
-            if scenario == "long_context":
+            elif scenario == "long_context":
                 final_rec = {
                     "context_range":     rec["context_range"],   # e.g. "3k" or "4k"
                     "length":            rec["length"] + 160 + 10, # original context length in tokens + 153 for the prompt + 10 for the question
