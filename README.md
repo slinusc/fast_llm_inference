@@ -40,8 +40,11 @@ When deploying LLMs locally, there’s no one-size-fits-all. Bench360 helps answ
 - NVIDIA GPU with NVML support
 - CUDA 12.x
 - Python 3.8+
+- Docker
 
 ### Setup
+
+Clone the repository:
 
 ```bash
 git clone https://github.com/slinusc/fast_llm_inference.git
@@ -49,6 +52,15 @@ cd fast_llm_inference
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
+```
+
+Pull all official backend docker images:
+
+```bash
+docker pull lmsysorg/sglang:latest \
+             openmmlab/lmdeploy:latest \
+             vllm/vllm-openai:latest \
+             ghcr.io/huggingface/text-generation-inference:latest
 ````
 
 > Optional system dependencies:

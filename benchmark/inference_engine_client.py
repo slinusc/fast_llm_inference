@@ -22,68 +22,37 @@ class InferenceEngineClient:
     def launch(self, backend: str, model: str, timeout: float = 500.0):
         """
         1) Starts your existing launch_engine.sh in a Popen (non-blocking).
-        2) Polls http://127.0.0.1:23333/v1/models every 2 s until <model> appears
-        or ‘timeout’ seconds elapse.
-
+        2) Polls `http://127.0.0.1:23333/v1/models` every 2 seconds
+           until the desired model shows up (or timeout).
+        
         :param backend: One of {tgi, vllm, mii, sglang, lmdeploy}
-        :param model:   HF model ID or local path
-        :param timeout: Seconds to wait for the model to show up before raising
+        :param model: HF model ID or local path
+        :param timeout: Max seconds to wait for the model to appear before raising.
         """
-
-        # ── 1. Docker-image guard ────────────────────────────────────────────
-        _image = {
-            "tgi":      "ghcr.io/huggingface/text-generation-inference:latest",
-            "vllm":     "docker.io/vllm/vllm-openai:latest",
-            "mii":      "microsoft/deepspeed-mii:latest",
-            "sglang":   "docker.io/lmsysorg/sglang:latest",
-            "lmdeploy": "docker.io/openmmlab/lmdeploy:latest",
-        }.get(backend)
-
-        if _image is None:
-            raise ValueError(f"Unknown backend '{backend}'")
-
-        image_present = subprocess.run(
-            ["docker", "inspect", "--type=image", _image],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        ).returncode == 0
-
-        if not image_present:
-            print(f"[launch] pulling Docker image {_image} …")
-            try:
-                subprocess.check_call(["docker", "pull", _image])
-            except subprocess.CalledProcessError as e:
-                raise RuntimeError(f"Failed to pull {_image}: {e}") from e
-            print("[launch] image ready")
-        # ──────────────────────────────────────────────────────────────────────
-
-        # ── 2. Sanity-check launch_engine.sh path / permissions ──────────────
-        script_path = (Path(__file__).resolve().parent / "launch_engine.sh").as_posix()
+        script_path = os.path.join(os.getcwd(), "benchmark/launch_engine.sh")
         if not os.path.isfile(script_path):
             raise FileNotFoundError(f"Cannot find '{script_path}'.")
         if not os.access(script_path, os.X_OK):
             raise PermissionError(f"'{script_path}' is not executable (chmod +x missing).")
-        # ──────────────────────────────────────────────────────────────────────
 
-        # ── 3. Start the launcher in a subprocess (non-blocking) ─────────────
+        # 1) Start the launcher in a subprocess.
         cmd = [
             script_path,
             f"--engine={backend}",
-            f"--model={model}",
+            f"--model={model}"
         ]
         self._launcher_proc = subprocess.Popen(
             cmd,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
         )
-        # ──────────────────────────────────────────────────────────────────────
 
-        # ── 4. Poll /v1/models until the model appears or we timeout ─────────
-        list_url   = "http://127.0.0.1:23333/v1/models"
+        # 2) Poll /v1/models until our model_id appears or timeout.
+        list_url = "http://127.0.0.1:23333/v1/models"
         start_time = time.time()
 
         while True:
-            # if the launcher died early, surface the error
+            # If the launcher process died, report error
             if self._launcher_proc.poll() is not None:
                 raise RuntimeError(
                     f"Launcher script exited early with code {self._launcher_proc.returncode}"
@@ -92,16 +61,22 @@ class InferenceEngineClient:
             try:
                 resp = requests.get(list_url, timeout=2.0)
                 if resp.status_code == 200:
-                    for entry in resp.json().get("data", []):
+                    data = resp.json().get("data", [])
+                    # Check if our model_id is in the loaded list
+                    for entry in data:
                         if entry.get("id") == model:
-                            self.model = model             # model is ready
+                            # Model is loaded and ready to serve
+                            self.model = model
                             return
+                # If status is not 200 or model not found yet, keep waiting
             except requests.exceptions.RequestException:
-                pass  # server not up yet → keep polling
+                # Connection refused, etc. → server not up yet
+                pass
 
-            if time.time() - start_time > timeout:
+            elapsed = time.time() - start_time
+            if elapsed > timeout:
                 raise TimeoutError(
-                    f"Waited {timeout}s for model '{model}' at {list_url}, but it never appeared."
+                    f"Waited {timeout}s for model '{model}' to appear at {list_url}, but it never did."
                 )
             time.sleep(2.0)
 
