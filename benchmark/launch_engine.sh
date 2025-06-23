@@ -146,7 +146,7 @@ case "$ENGINE" in
     #   --ipc=host \
     #   lmsysorg/sglang:latest \
     #   bash -c "\
-    #     pip install --no-cache-dir protobuf sentencepiece && \
+    #     pip install --no-cache-dir protobuf sentencepiece --break-system-packages && \
     #     python3 -m sglang.launch_server \
     #       --model-path mistralai/Mistral-7B-Instruct-v0.3 \
     #       --host 0.0.0.0 \
@@ -160,7 +160,7 @@ case "$ENGINE" in
       --ipc=host \
       lmsysorg/sglang:latest \
       bash -c "\
-        pip install --no-cache-dir protobuf sentencepiece && \
+        pip install --no-cache-dir protobuf sentencepiece --break-system-packages && \
         python3 -m sglang.launch_server \
           --model-path $MODEL \
           --host 0.0.0.0 \
