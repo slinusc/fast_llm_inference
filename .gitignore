@@ -176,8 +176,6 @@ llama.cpp/
 
 Loading_your_LLM.ipynb
 
-tables.json
-
 results/
 results_benchmark/
 configs/

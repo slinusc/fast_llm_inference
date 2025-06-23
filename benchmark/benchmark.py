@@ -33,7 +33,7 @@ random.seed(DEFAULT_SEED)
 numpy_rng = np.random.default_rng(DEFAULT_SEED)
 torch.manual_seed(DEFAULT_SEED)
 
-PROJECT_ROOT = Path(os.getenv("FASTLLM_HOME", Path(__file__).resolve().parents[1]))
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 LOOKUP_DIR = PROJECT_ROOT / "benchmark" / "lookup"
 RESULTS_DIR = PROJECT_ROOT / "results_benchmark"
 

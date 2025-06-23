@@ -1,17 +1,20 @@
 import random
 import json
 from datasets import load_dataset
-from sqlglot import parse_one, errors as sqlglot_errors
+from pathlib import Path
+from sqlglot import parse_one
+
+LOOKUP_DIR = Path(__file__).resolve().parents[2] / "benchmark" / "lookup"
 
 class SQLTask:
     """
     A class to handle the SQL generation task using the Spider dataset.
     """
 
-    def __init__(self, tables_path="/home/ubuntu/fast_llm_inference/benchmark/lookup/tables.json"):
+    def __init__(self, tables_path: str = None):
         random.seed(42)
         self.dataset = list(load_dataset("spider", split="train"))
-        self.tables_path = tables_path
+        self.tables_path = Path(tables_path or LOOKUP_DIR / "tables.json")
 
     def generate_prompts(self, num_examples : int = 100):
         """
@@ -120,7 +123,7 @@ class SQLTask:
 
 
 if __name__ == "__main__":
-    task = SQLTask(tables_path="/home/rag/fast_llm_inference/benchmark/tasks/tables.json")
+    task = SQLTask()
     prompts, references = task.generate_prompts(num_examples=3)
     for i in range(3):
         print(f"Prompt {i+1}:")
