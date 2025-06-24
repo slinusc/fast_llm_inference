@@ -186,6 +186,16 @@ class ModelBenchmark:
     def generate(self, prompts):
         return self.iec.completion(prompts)
 
+    def _generate_and_time(self, prompt):
+        """
+        Call self.generate() and return (output, t0) where
+        t0 is the moment we entered generate().
+        """
+        t0 = time.time()
+        out = self.generate([prompt])[0]
+        return out, t0
+
+
     @staticmethod
     def estimate_local_query_cost(
         inf_time_sec: float,
@@ -321,32 +331,43 @@ class ModelBenchmark:
         all_events.sort(key=lambda x: x[0])  # expensive for large num_users, consider heap
         return all_events
 
+    # ─────────────────────────────────────────────────────────────
+    #  Per-request capture  (worker thread)
+    # ─────────────────────────────────────────────────────────────
     def _run_single_request_capture(
         self,
         prompt,
         reference,
         start_wall,
         scheduled_ts,
-        user_id
+        user_id,
     ):
         """
-        Capture raw outputs and timing without computing quality.
+        Record raw output + timing.  All stamps are client-side:
+
+        ▸ scheduled_ts  – target arrival time from the Poisson scheduler
+        ▸ send_time     – the instant this thread submits the request
+        ▸ start_time    – right before self.generate() enters the backend
+        ▸ generation_time – blocking duration of self.generate()
+        ▸ wait_time     – client-side queueing = send_time − (start_wall + scheduled_ts)
         """
-        send_time = time.time()
-        wait_time = send_time - (start_wall + scheduled_ts)
-        t0 = time.time()
-        raw_out = self.generate([prompt])[0]
-        gen_time = time.time() - t0
+        send_time  = time.time()                                  # ① request handed to backend
+        wait_time  = send_time - (start_wall + scheduled_ts)
+
+        start_time = time.time()                                  # ② generate() begins
+        raw_out    = self.generate([prompt])[0]
+        gen_time   = time.time() - start_time                     # ③ generate() duration
+
         return {
-            "user_id": user_id,
-            "prompt": prompt,
-            "generated_raw": raw_out,
-            "reference": reference,
-            "send_time": send_time,       # when request was received
-            "start_time": t0,             # exact moment generation began
-            "generation_time": gen_time,  # duration of generate() call
-            "scheduled_ts": scheduled_ts,  # when the request was scheduled
-            "wait_time_s": round(wait_time, 6)
+            "user_id":          user_id,
+            "prompt":           prompt,
+            "generated_raw":    raw_out,
+            "reference":        reference,
+            "send_time":        send_time,
+            "start_time":       start_time,
+            "generation_time":  gen_time,
+            "scheduled_ts":     scheduled_ts,
+            "wait_time":        round(wait_time, 6),              # ← renamed (was wait_time_s)
         }
 
 
@@ -635,6 +656,7 @@ class ModelBenchmark:
                     "send_time":          rec["send_time"],       # when request was received
                     "start_time":         rec["start_time"],      # when generation started
                     "scheduled_ts":       rec["scheduled_ts"],    # when the request was scheduled
+                    "wait_time":    rec["wait_time"],   # client-side queuing delay
                 }
             elif scenario == "long_context":
                 final_rec = {
