@@ -17,18 +17,18 @@ scenario:   [single, batch, server]
 # ----------------
 # shared defaults
 # ----------------
-samples:          128           # used in single & batch
+samples:          512           # used in single & batch
 sample_interval:  0.1
 quality_metric:   true
 
 # ----------------
 # batch-scenario specific
 # ----------------
-batch_size: [16, 32, 64] 
+batch_size: [16, 32, 64, 128] 
 
 # ----------------
 # server-scenario specific
 # ----------------
 run_time: 300 # seconds
-concurrent_users: [8, 16, 32]
+concurrent_users: [8, 16, 32, 64]
 requests_per_user_per_min: 12
