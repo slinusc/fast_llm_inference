@@ -174,8 +174,6 @@ inference/
 
 llama.cpp/
 
-Loading_your_LLM.ipynb
-
 results/
 results_benchmark/
 configs/
@@ -185,7 +183,5 @@ models/
 nohup.out
 
 experiments/
-results_benchmark_full_1_A30/
-results_benchmark_full_2_A30/
-results_server_only/
-results_thesis_server_metrics_missing/
+results_archive/
+config.yaml

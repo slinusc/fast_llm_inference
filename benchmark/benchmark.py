@@ -335,40 +335,55 @@ class ModelBenchmark:
     #  Per-request capture  (worker thread)
     # ─────────────────────────────────────────────────────────────
     def _run_single_request_capture(
-        self,
-        prompt,
-        reference,
-        start_wall,
-        scheduled_ts,
-        user_id,
+            self,
+            prompt: str,
+            reference: str,
+            start_wall: float,      # wall clock of experiment start (main thread)
+            scheduled_ts: float,    # target arrival time relative to start_wall
+            user_id: int,
+            submit_time: float,     # NEW – when main thread queued the task
     ):
         """
-        Record raw output + timing.  All stamps are client-side:
+        All stamps are **client-side**.
 
-        ▸ scheduled_ts  – target arrival time from the Poisson scheduler
-        ▸ send_time     – the instant this thread submits the request
-        ▸ start_time    – right before self.generate() enters the backend
-        ▸ generation_time – blocking duration of self.generate()
-        ▸ wait_time     – client-side queueing = send_time − (start_wall + scheduled_ts)
+        ▸ scheduled_ts – planned arrival time from Poisson scheduler         (main)
+        ▸ submit_time  – when the request was queued in ThreadPoolExecutor   (main)
+        ▸ send_time    – when the worker thread actually begins              (worker)
+        ▸ start_time   – when the backend starts processing                  (worker)
+        ▸ generation_time – backend blocking duration                        (worker)
+        ▸ queue_time   – submit → worker-start delay inside the pool
+        ▸ wait_time    – (send_time − (start_wall + scheduled_ts))
+        ▸ e2e_latency  – wait_time + generation_time
         """
-        send_time  = time.time()                                  # ① request handed to backend
+
+        # ── 1. thread has started ──────────────────────────────────────────
+        send_time  = time.time()
+        queue_time = send_time - submit_time         # Item #4
+
+        # difference between intended arrival and dispatch to backend
         wait_time  = send_time - (start_wall + scheduled_ts)
 
-        start_time = time.time()                                  # ② generate() begins
-        raw_out    = self.generate([prompt])[0]
-        gen_time   = time.time() - start_time                     # ③ generate() duration
+        # ── 2. generate answer & measure ──────────────────────────────────
+        raw_out, start_time = self._generate_and_time(prompt)
+        gen_time   = time.time() - start_time
+        e2e_latency = wait_time + gen_time           # Item #3
 
+        # ── 3. return record ──────────────────────────────────────────────
         return {
             "user_id":          user_id,
             "prompt":           prompt,
             "generated_raw":    raw_out,
             "reference":        reference,
+            "submit_time":      submit_time,
             "send_time":        send_time,
             "start_time":       start_time,
             "generation_time":  gen_time,
             "scheduled_ts":     scheduled_ts,
-            "wait_time":        round(wait_time, 6),              # ← renamed (was wait_time_s)
+            "queue_time":       round(queue_time, 6),
+            "wait_time":        round(wait_time, 6),
+            "e2e_latency":      round(e2e_latency, 6),
         }
+
 
 
     def _run_scenario(
@@ -460,26 +475,61 @@ class ModelBenchmark:
 
         if scenario == "server":
             futures = []
+
             for ts, prompt, reference, uid in events:
                 now_elapsed = time.time() - wall_start
+                if now_elapsed > run_time:
+                    break  # ⛔️ stop submitting requests
+
                 wait = ts - now_elapsed
                 if wait > 0:
                     time.sleep(wait)
 
+                # 🔁 re-check again after sleep to avoid overshooting
+                now_elapsed = time.time() - wall_start
+                if now_elapsed > run_time:
+                    break  # ⛔️ skip late requests
+
+                submit_time = time.time()
                 futures.append(
                     executor.submit(
                         self._run_single_request_capture,
                         prompt,
                         reference,
-                        wall_start,   # still pass wall_start if used in capture
+                        wall_start,
                         ts,
-                        uid
+                        uid,
+                        submit_time
                     )
                 )
 
-            executor.shutdown(wait=True)
+            # ── stop taking new work but keep running tasks alive ───────────────────
+            executor.shutdown(wait=False, cancel_futures=False)
+
+            grace_seconds = 2
+            done          = set()
+
+            try:
+                for fut in concurrent.futures.as_completed(futures, timeout=grace_seconds):
+                    done.add(fut)
+                    if fut.cancelled():
+                        continue
+                    try:
+                        intermediate_records.append(fut.result())
+                    except Exception as e:
+                        print("⚠️  future skipped:", type(e).__name__, e)
+            except concurrent.futures.TimeoutError:
+                # timeout reached – just fall through and cancel leftovers
+                pass
+
+            # ── cancel anything still pending or queued ─────────────────────────────
             for fut in futures:
-                intermediate_records.append(fut.result())
+                if fut not in done and not fut.done():
+                    fut.cancel()    # queued request never started → drop
+
+            # (optionally) give running tasks a moment to notice cancellation
+            time.sleep(0.1)
+
 
         elif scenario == "batch":
             for ps, rs in self._batch_generator(prompts, refs, batch_size):
@@ -652,12 +702,16 @@ class ModelBenchmark:
             # If you’re in “server” mode, also include scheduling info:
             if scenario == "server":
                 final_rec = {
-                    "user_id":           rec["user_id"],         # user ID for this request
-                    "send_time":          rec["send_time"],       # when request was received
-                    "start_time":         rec["start_time"],      # when generation started
-                    "scheduled_ts":       rec["scheduled_ts"],    # when the request was scheduled
-                    "wait_time":    rec["wait_time"],   # client-side queuing delay
+                    "user_id":      rec["user_id"],
+                    "scheduled_ts": rec["scheduled_ts"],
+                    "submit_time":  rec["submit_time"],
+                    "send_time":    rec["send_time"],
+                    "start_time":   rec["start_time"],
+                    "queue_time":   rec["queue_time"],
+                    "wait_time":    rec["wait_time"],
+                    "e2e_latency":  rec["e2e_latency"],
                 }
+
             elif scenario == "long_context":
                 final_rec = {
                     "context_range":     rec["context_range"],   # e.g. "3k" or "4k"
