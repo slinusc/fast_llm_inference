@@ -116,11 +116,11 @@ class ModelBenchmark:
         rss_bytes = self._ps_proc.memory_info().rss
         return round(rss_bytes / (1024 ** 2), 2)  # MB
 
-    def _metrics_monitor(self, readings: dict, stop_evt: threading.Event, sample_interval: float):
+    def _metrics_monitor(self, readings, stop_evt, sample_interval, hard_end=float("inf")):
         """
         Sample GPU/CPU/RAM metrics until stop_evt is set.
         """
-        while not stop_evt.is_set():
+        while not stop_evt.is_set() and time.time() < hard_end:
             # GPU‐side metrics (same as before)
             readings["memory"].append(self._get_gpu_memory_usage())
             readings["power"].append(self._get_gpu_power_usage())
@@ -156,32 +156,6 @@ class ModelBenchmark:
                 raise ValueError("Path must be a .gguf file or a model directory.")
         else:
             return self.model_size
-
-    def measure_energy(self, num_tokens, num_sentences, generation_time, sample_interval=0.1):
-        """
-        Sample GPU power over generation_time and compute energy metrics.
-        """
-        readings = []
-        start = time.time()
-        while time.time() - start < generation_time:
-            readings.append(self._get_gpu_power_usage())
-            time.sleep(sample_interval)
-        avg_power = sum(readings) / len(readings) if readings else 0.0
-        total_energy_wh = avg_power * generation_time / 3600
-        energy_per_token = (total_energy_wh * 3600 / num_tokens) if num_tokens > 0 else 0.0
-        energy_per_sentence = (total_energy_wh * 3600 / num_sentences) if num_sentences > 0 else 0.0
-        return {
-            "Total Energy (Wh)": round(total_energy_wh, 6),
-            "Avg Power (W)": round(avg_power, 2),
-            "Energy per Token (J/token)": round(energy_per_token, 6),
-            "Energy per Sentence (J/sentence)": round(energy_per_sentence, 6),
-        }
-
-    def measure_gpu_utilization(self):
-        """Measure GPU utilization percentage."""
-        if self.device == "cuda" and self.handle:
-            return {"GPU_Utilization (%)": self._get_gpu_utilization()}
-        return {}
 
     def generate(self, prompts):
         return self.iec.completion(prompts)
@@ -265,7 +239,6 @@ class ModelBenchmark:
         return self._meta_base
 
 
-
     def _batch_generator(
         self,
         prompts: list[str],
@@ -286,7 +259,6 @@ class ModelBenchmark:
             chunker(refs,    batch_size)
         ):
             yield ps, rs
-
 
 
     def _prepare_prompts_per_user(
@@ -330,6 +302,54 @@ class ModelBenchmark:
                 all_events.append((t, u))
         all_events.sort(key=lambda x: x[0])  # expensive for large num_users, consider heap
         return all_events
+
+    def _user_producer(
+        self,
+        uid: int,
+        rps_user: float,
+        wall_start: float,
+        run_time: float,
+        prompts: list[str],
+        refs: list[str],
+        executor: concurrent.futures.Executor,
+        futures: list,                              # ← NEW: shared list
+    ):
+        """
+        Submit a Poisson stream of requests for exactly `run_time` seconds.
+
+        Each submitted Future is appended to the shared `futures` list so the
+        caller can later harvest results with concurrent.futures.as_completed().
+        """
+        rng       = numpy_rng                      # global RNG (seeded once)
+        deadline  = wall_start + run_time
+        idx       = 0                              # round-robin over prompt pool
+
+        while True:
+            gap     = rng.exponential(1.0 / rps_user)   # inter-arrival
+            target  = time.time() + gap
+            if target >= deadline:
+                break                                 # stop after n seconds
+            time.sleep(target - time.time())
+
+            prompt = prompts[idx % len(prompts)]
+            ref    = refs[idx % len(refs)]
+            idx   += 1
+
+            scheduled_ts = target - wall_start
+            submit_ts    = time.time()
+
+            future = executor.submit(
+                self._run_single_request_capture,
+                prompt,
+                ref,
+                wall_start,
+                scheduled_ts,
+                uid,
+                submit_ts,
+            )
+            futures.append(future)                   # ← track the Future
+
+
 
     # ─────────────────────────────────────────────────────────────
     #  Per-request capture  (worker thread)
@@ -441,94 +461,85 @@ class ModelBenchmark:
                 num_queries=samples or 0
             )
 
-        # 4) prepare prompts/schedules
+        # 4) prepare prompts
         if scenario == "server":
-            prompts, refs, sched_ts, user_ids = self._prepare_prompts_per_user(
-                task_, run_time, concurrent_users, requests_per_user_per_min
+            est_requests = math.ceil(            # rough upper bound:
+                run_time * concurrent_users * requests_per_user_per_min / 60
             )
-            events = list(zip(sched_ts, prompts, refs, user_ids))
-            events.sort(key=lambda x: x[0])
+            prompts, refs = task_.generate_prompts(num_examples=est_requests)
+
         elif scenario in ["batch", "single"]:
             prompts, refs = task_.generate_prompts(num_examples=samples or 0)
         elif scenario == "long_context":
             prompts, refs, lengths, crs = task_.generate_prompts(num_samples_per_level=samples or 0)
 
 
-        # 5) start metrics monitor
+        # ─────────────────────────────────────────────────────────────
+        # 5)  start metrics monitor  (needs wall_start for hard_end)
+        # ─────────────────────────────────────────────────────────────
         global_readings = {"memory": [], "power": [], "util": [], "cpu": [], "ram": []}
-        stop_evt = threading.Event()
+        stop_evt        = threading.Event()
+
+        wall_start = time.time()                        # must precede the monitor
+        # hard_end   = wall_start + run_time              # 300 s etc.
+
         mon = threading.Thread(
             target=self._metrics_monitor,
             args=(global_readings, stop_evt, sample_interval),
-            daemon=True
+            daemon=True,
         )
         mon.start()
 
-        # 6) setup executor for server
-        executor = None
-        if scenario == "server":
-            executor = concurrent.futures.ThreadPoolExecutor(max_workers=concurrent_users)
-
-        # 7) run inference, capture raw outputs
-        wall_start = time.time()
         intermediate_records = []
 
         if scenario == "server":
-            futures = []
+            # ─────────────────────────────────────────────────────────────
+            # 6)  executor + k user-producer threads
+            # ─────────────────────────────────────────────────────────────
+            futures   : list[concurrent.futures.Future] = []
+            rps_user  = requests_per_user_per_min / 60.0
+            executor  = concurrent.futures.ThreadPoolExecutor(max_workers=concurrent_users)
 
-            for ts, prompt, reference, uid in events:
-                now_elapsed = time.time() - wall_start
-                if now_elapsed > run_time:
-                    break  # ⛔️ stop submitting requests
-
-                wait = ts - now_elapsed
-                if wait > 0:
-                    time.sleep(wait)
-
-                # 🔁 re-check again after sleep to avoid overshooting
-                now_elapsed = time.time() - wall_start
-                if now_elapsed > run_time:
-                    break  # ⛔️ skip late requests
-
-                submit_time = time.time()
-                futures.append(
-                    executor.submit(
-                        self._run_single_request_capture,
-                        prompt,
-                        reference,
-                        wall_start,
-                        ts,
-                        uid,
-                        submit_time
-                    )
+            producers = []
+            for uid in range(concurrent_users):
+                th = threading.Thread(
+                    target=self._user_producer,          # <- unchanged helper
+                    args=(
+                        uid, rps_user, wall_start, run_time,
+                        prompts, refs,
+                        executor,                        # pass the pool
+                        futures,                         # pass *shared* list to collect futures
+                    ),
+                    daemon=True,
                 )
+                th.start()
+                producers.append(th)
 
-            # ── stop taking new work but keep running tasks alive ───────────────────
-            executor.shutdown(wait=False, cancel_futures=False)
+            # ─────────────────────────────────────────────────────────────
+            # 7)  load window finished → stop producers & wait
+            # ─────────────────────────────────────────────────────────────
+            time.sleep(run_time)
+            for th in producers:
+                th.join()               # guarantees no new tasks after the deadline
 
-            grace_seconds = 2
-            done          = set()
+            # ─────────────────────────────────────────────────────────────
+            # 8)  drain the executor (let all queued futures finish)
+            # ─────────────────────────────────────────────────────────────
+            executor.shutdown(wait=True)    # waits until every submitted task is done
 
-            try:
-                for fut in concurrent.futures.as_completed(futures, timeout=grace_seconds):
-                    done.add(fut)
-                    if fut.cancelled():
-                        continue
-                    try:
-                        intermediate_records.append(fut.result())
-                    except Exception as e:
-                        print("⚠️  future skipped:", type(e).__name__, e)
-            except concurrent.futures.TimeoutError:
-                # timeout reached – just fall through and cancel leftovers
-                pass
+            # collect finished records
+        
+            for fut in concurrent.futures.as_completed(futures):
+                try:
+                    intermediate_records.append(fut.result())
+                except Exception:
+                    pass                    # ignore cancelled / failed requests
 
-            # ── cancel anything still pending or queued ─────────────────────────────
-            for fut in futures:
-                if fut not in done and not fut.done():
-                    fut.cancel()    # queued request never started → drop
-
-            # (optionally) give running tasks a moment to notice cancellation
-            time.sleep(0.1)
+            # ─────────────────────────────────────────────────────────────
+            # 9)  stop monitor exactly at hard_end
+            # ─────────────────────────────────────────────────────────────
+            stop_evt.set()
+            mon.join()
 
 
         elif scenario == "batch":
@@ -622,13 +633,6 @@ class ModelBenchmark:
             avg_power_w = peak_power_w = 0
             total_energy_wh = 0.0
 
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        readings_csv_path = (
-            RESULTS_DIR
-            / "readings"
-            / f"ts_{self.backend}_{self.model_name}_{scenario}_{task}_{timestamp}.csv"
-        )
-
         readings_df = pd.DataFrame({
             "gpu_memory_mb": global_readings["memory"],
             "gpu_power_w": global_readings["power"],
@@ -636,7 +640,6 @@ class ModelBenchmark:
             "cpu_util_pct": global_readings["cpu"],
             "ram_mb": global_readings["ram"]
         })
-        readings_df.to_csv(readings_csv_path, index=False)
 
         # 10) assemble run_report
         run_report = meta_df.copy().drop(columns=["batch_id"], errors="ignore")
@@ -755,7 +758,7 @@ class ModelBenchmark:
         #    self.iec.close()
 
         # 14) Return the run report and details DataFrame
-        return run_report, details_df
+        return run_report, details_df, readings_df
 
 
     def run(

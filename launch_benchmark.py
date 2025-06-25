@@ -71,10 +71,11 @@ def _stem(cfg: Dict[str, Any]) -> str:
     parts.append(_cfg_hash(cfg))
     return "_".join(parts)
 
-def _save_results(report, details, cfg):
+def _save_results(report, details, readings, cfg):
     stem = _stem(cfg)
     report.to_csv(f"results_benchmark/run_report/{stem}.csv", index=False)
     details.to_csv(f"results_benchmark/details/{stem}.csv", index=False)
+    readings.to_csv(f"results_benchmark/readings/ts_{stem}.csv", index=False)
     console.print(f"[green]Saved[/] results_benchmark/run_report/{stem}.csv")
 
 # ───────────────────────────────────────── pretty print helper
@@ -88,7 +89,7 @@ def _display_vertical(df):
 
 # ───────────────────────────────────────── one run
 def _run_one(cfg: Dict[str, Any], bm: ModelBenchmark):
-    report, details = bm.run(
+    report, details, readings = bm.run(
         task   = cfg["task"],
         scenario = cfg["scenario"],
         samples  = cfg.get("samples"),
@@ -99,7 +100,7 @@ def _run_one(cfg: Dict[str, Any], bm: ModelBenchmark):
         sample_interval = cfg.get("sample_interval", 0.1),
         quality_metric  = cfg.get("quality_metric", True),
     )
-    _save_results(report, details, cfg)
+    _save_results(report, details, readings, cfg)
     return report
 
 # ───────────────────────────────────────── multi-run
@@ -175,7 +176,7 @@ def main():
         )
         try:
             with console.status("[cyan]running…", spinner="dots"):
-                report, details = bm.run(
+                report, details, readings = bm.run(
                     task         = raw["task"],
                     scenario     = raw["scenario"],
                     samples      = raw.get("samples"),
@@ -187,7 +188,7 @@ def main():
                     quality_metric  = raw.get("quality_metric", True),
                 )
             _display_vertical(report)
-            _save_results(report, details, raw | {"model_name": raw.get("model_name","")})
+            _save_results(report, details, readings, raw | {"model_name": raw.get("model_name","")})
         except Exception as e:
             console.print(f"[red]✗  single-run crash — {type(e).__name__}: {e}")
             with open(FAILED_LOG, "a") as f:
