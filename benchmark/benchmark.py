@@ -14,6 +14,10 @@ import subprocess
 import math
 import pandas as pd
 from difflib import get_close_matches
+from huggingface_hub import HfApi, hf_hub_download
+import json
+from pathlib import Path
+
 from pynvml import (
     nvmlInit,
     nvmlDeviceGetHandleByIndex,
@@ -43,7 +47,6 @@ class ModelBenchmark:
         backend="tgi",
         model_name="",
         model_path=None,
-        model_size=None,
         verbose=False
     ):
         if backend not in ("tgi", "mii", "sglang", "vllm", "lmdeploy"):
@@ -51,10 +54,11 @@ class ModelBenchmark:
         self.backend = backend
         self.model_path = model_path
         self.model_name = model_name
-        self.model_size = model_size  # in MB, if known
+        self.model_size = 0
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.verbose = verbose
         self.iec = InferenceEngineClient()
+        self.api = HfApi()
 
         # GPU monitoring setup
         if self.device == "cuda":
@@ -137,25 +141,38 @@ class ModelBenchmark:
             nvmlShutdown()
             self.handle = None
 
-    def get_model_size(self, path):
+    def get_model_size(self, repo_id: str, revision: str | None = None) -> float:
         """
-        Calculate model size in MB. """
-        if self.model_size is None:
-            if os.path.isfile(path) and path.endswith(".gguf"):
-                return os.path.getsize(path) / (1024 * 1024)
-            elif os.path.isdir(path):
-                extensions = (".safetensors", ".bin", ".json", ".txt", ".model", ".tokenizer")
-                total_size = 0
-                for dirpath, _, filenames in os.walk(path):
-                    for f in filenames:
-                        if f.endswith(extensions):
-                            fp = os.path.join(dirpath, f)
-                            total_size += os.path.getsize(fp)
-                return total_size / (1024 * 1024)
-            else:
-                raise ValueError("Path must be a .gguf file or a model directory.")
-        else:
-            return self.model_size
+        Return size in mebibytes (MiB) occupied by `repo_id` on Hugging Face.
+        """
+        # Try index-based size first
+        try:
+            index_path = hf_hub_download(
+                repo_id, "model.safetensors.index.json",
+                repo_type="model", revision=revision, local_dir="/tmp", local_dir_use_symlinks=False
+            )
+            with open(index_path, "r", encoding="utf-8") as f:
+                total = json.load(f).get("metadata", {}).get("total_size")
+                if isinstance(total, int) and total > 0:
+                    return total / (1024**2)
+        except Exception as e:
+            if self.verbose:
+                print(f"[WARN] Could not retrieve index.json for {repo_id}: {e}")
+
+        # Fallback: manually sum .bin, .pt, .safetensors files
+        try:
+            weight_exts = {".bin", ".safetensors", ".pt", ".pth"}
+            size_sum = 0
+            for file_info in self.api.list_repo_files(repo_id, revision=revision, repo_type="model"):
+                if Path(file_info).suffix in weight_exts:
+                    hf_obj = self.api.head(repo_id, file_info, revision=revision, repo_type="model")
+                    size_sum += hf_obj.size
+            return round(size_sum / (1024**2), 2)
+        except Exception as e:
+            if self.verbose:
+                print(f"[ERROR] Could not estimate model size for {repo_id}: {e}")
+            return 0.0
+
 
     def generate(self, prompts):
         return self.iec.completion(prompts)
@@ -220,7 +237,7 @@ class ModelBenchmark:
         self.iec.warmup()
         ttft = self.iec.measure_ttft()
 
-        self.model_size = 0  # TODO: compute real size if needed
+        self.model_size = self.get_model_size(self.model_path)
 
         meta = {
             "model_name":   self.model_name,

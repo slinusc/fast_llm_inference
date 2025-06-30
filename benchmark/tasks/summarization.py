@@ -12,14 +12,25 @@ class SummarizationTask:
         self.rouge = evaluate.load("rouge")
         self.dataset = list(load_dataset("cnn_dailymail", "3.0.0")["test"])
 
-    def generate_prompts(self, num_examples : int = 100):
+    def generate_prompts(self, num_examples: int = 100, max_words: int = 1600):
         """
-        Generates random summarization prompts and references.
+        Generates summarizat
+        ion prompts with optional max word count.
         """
-        sampled = random.sample(self.dataset, num_examples)
-        prompts = [self.sum_prompt(example["article"]) for example in sampled]
-        references = [example["highlights"] for example in sampled]
+        prompts, references = [], []
+
+        while len(prompts) < num_examples:
+            example = random.choice(self.dataset)
+            prompt = self.sum_prompt(example["article"])
+
+            word_count = len(prompt.split())
+            if max_words is None or word_count <= max_words:
+                prompts.append(prompt)
+                references.append(example["highlights"])
+
         return prompts, references
+
+
 
     @staticmethod
     def sum_prompt(article: str) -> str:

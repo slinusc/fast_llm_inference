@@ -3,6 +3,8 @@ import subprocess
 import time
 import requests
 from pathlib import Path
+import httpx
+from benchmark.utils import _start_log_tailer
 
 class InferenceEngineClient:
     """
@@ -13,7 +15,7 @@ class InferenceEngineClient:
 
     def __init__(self, base_url="http://localhost:23333/v1", api_key="none"):
         from openai import OpenAI
-        self.client = OpenAI(api_key=api_key, base_url=base_url)
+        self.client = OpenAI(api_key=api_key, base_url=base_url, timeout=httpx.Timeout(60.0))
         self._launcher_proc = None
         self.model = None
 
@@ -43,9 +45,14 @@ class InferenceEngineClient:
         ]
         self._launcher_proc = subprocess.Popen(
             cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
+            stdout=subprocess.PIPE,          # ⟵ was DEVNULL
+            stderr=subprocess.STDOUT,        # merge both streams
+            text=True,
+            bufsize=1                        # line-buffered
         )
+
+        # Start a daemon thread to read the launcher output
+        _start_log_tailer(self, max_lines=10)
 
         # 2) Poll /v1/models until our model_id appears or timeout.
         list_url = "http://127.0.0.1:23333/v1/models"
@@ -87,7 +94,7 @@ class InferenceEngineClient:
         prompt,
         model: str | None = None,
         temperature: float = 0.1,
-        max_tokens: int = 512,
+        max_tokens: int = 64,
         top_p: float = 0.9,
         stream: bool = False,
     ):
@@ -169,11 +176,11 @@ class InferenceEngineClient:
 
     def close(self):
         """
-        Stop any Docker container exposing port 23333, then close the HTTP client.
+        Stop any Docker container exposing port 23333, terminate subprocess,
+        stop background log tailer (if running), and close HTTP client.
         """
         # 1) Attempt to find and stop the container(s) on port 23333
         try:
-            # This returns all container IDs whose published port includes 23333/tcp
             result = subprocess.run(
                 ["docker", "ps", "--filter", "publish=23333", "-q"],
                 stdout=subprocess.PIPE,
@@ -183,31 +190,35 @@ class InferenceEngineClient:
             )
             container_ids = result.stdout.strip().split()
             for cid in container_ids:
-                # Gracefully stop each container
                 subprocess.run(
                     ["docker", "stop", cid],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL
                 )
         except subprocess.CalledProcessError:
-            # If `docker ps` itself fails (e.g. Docker not running), just skip
-            pass
+            pass  # Docker might not be running
 
-        # 2) Now terminate the launcher subprocess if it’s still alive
+        # 2) Terminate the launcher subprocess if still alive
         if hasattr(self, "_launcher_proc") and self._launcher_proc:
             if self._launcher_proc.poll() is None:
-                # Process is still running; give it a gentle terminate
                 self._launcher_proc.terminate()
                 try:
                     self._launcher_proc.wait(timeout=5.0)
                 except subprocess.TimeoutExpired:
                     self._launcher_proc.kill()
 
-        # 3) Finally, close any HTTP client connections
+        # 3) Stop the log tailer thread if present
+        if hasattr(self, "_stop_tail") and callable(getattr(self, "_stop_tail", None)):
+            self._stop_tail.set()
+            if hasattr(self, "_tail_thread"):
+                self._tail_thread.join(timeout=1.0)
+
+        # 4) Close HTTP client
         try:
             self.client.close()
         except Exception:
             pass
+
 
 
 if __name__ == "__main__":

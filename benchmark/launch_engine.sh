@@ -99,6 +99,8 @@ case "$ENGINE" in
     #   vllm/vllm-openai:latest \
     #     --model mistralai/Mistral-7B-Instruct-v0.3 \
     #     --port 23333
+
+    #   
     # ────────────────────────────────────────────────────────────────────────
     docker run --rm \
       --runtime=nvidia --gpus all \
@@ -108,6 +110,8 @@ case "$ENGINE" in
       --ipc=host \
       vllm/vllm-openai:latest \
         --model "$MODEL" \
+        --trust-remote-code \
+        --max-model-len 4096 \
         --port "$PORT"
     ;;
 
@@ -133,7 +137,8 @@ case "$ENGINE" in
       --ipc=host \
       openmmlab/lmdeploy:latest \
         lmdeploy serve api_server "$MODEL" \
-        --server-port "$PORT"
+        --server-port "$PORT" \
+        --cache-max-entry-count 0.5
     ;;
 
   sglang)

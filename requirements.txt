@@ -5,6 +5,7 @@ torch
 transformers
 pandas
 psutil
+huggingface_hub
 
 # GPU monitoring
 pynvml

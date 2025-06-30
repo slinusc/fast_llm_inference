@@ -113,12 +113,8 @@ class SQLTask:
             except Exception:  # catches ParseError, TokenError, AttributeError, etc.
                 return 0
 
-        def normalized_equal(sql1, sql2):
-            return int(normalize_answer(sql1) == normalize_answer(sql2))
-
         return {
-            "AST_equal": ast_equal(generated, reference),
-            "Normalized_equal": normalized_equal(generated, reference)
+            "AST_equal": ast_equal(generated, reference)
         }
 
 

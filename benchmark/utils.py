@@ -1,6 +1,9 @@
 import re, string
 import transformers
 from typing import Dict
+from collections import deque
+import threading
+from threading import Thread
 
 # Cache tokenizers so repeated calls with the same model_name don’t reload each time
 _tokenizer_cache: Dict[str, transformers.PreTrainedTokenizerFast] = {}
@@ -71,3 +74,18 @@ def clean_prediction(prediction: list[str]) -> list[str]:
         cleaned.append(ans)
     return cleaned
 
+
+def _start_log_tailer(self, max_lines: int = 30):
+    """Spawn a daemon thread that reads the process’ output and
+    stores the latest `max_lines` in self._log_buf (deque[str])."""
+    self._log_buf = deque(maxlen=max_lines)
+
+    def _tail():
+        for line in self._launcher_proc.stdout:
+            self._log_buf.append(line.rstrip("\n"))
+            if self._stop_tail.is_set():
+                break
+
+    self._stop_tail = threading.Event()
+    self._tail_thread = Thread(target=_tail, daemon=True)
+    self._tail_thread.start()
