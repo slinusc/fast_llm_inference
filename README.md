@@ -56,10 +56,11 @@ pip install -r requirements.txt
 
 > System dependencies:
 ```bash
-sudo apt update
-sudo apt install -y libssl-dev libcurl4 build-essential libllvm15
-sudo apt install -y nvidia-container-toolkit
-sudo systemctl restart docker
+sudo apt update && sudo apt install -y \
+  libssl-dev libcurl4 build-essential libllvm15 \
+  nvidia-container-toolkit && \
+  sudo nvidia-ctk runtime configure --runtime=docker && \
+  sudo systemctl restart docker
 ```
 
 Pull all official backend docker images:
