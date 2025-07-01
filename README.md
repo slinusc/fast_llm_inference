@@ -54,6 +54,14 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+> System dependencies:
+```bash
+sudo apt update
+sudo apt install -y libssl-dev libcurl4 build-essential libllvm15
+sudo apt install -y nvidia-container-toolkit
+sudo systemctl restart docker
+```
+
 Pull all official backend docker images:
 
 ```bash
@@ -62,14 +70,6 @@ docker pull openmmlab/lmdeploy:latest
 docker pull vllm/vllm-openai:latest
 docker pull ghcr.io/huggingface/text-generation-inference:latest
 ````
-
-> System dependencies:
-```bash
-sudo apt update
-sudo apt install -y libssl-dev libcurl4 build-essential libllvm15
-sudo apt install -y nvidia-container-toolkit
-sudo systemctl restart docker
-```
 
 ---
 
