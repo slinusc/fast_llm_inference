@@ -71,6 +71,11 @@ docker pull vllm/vllm-openai:latest
 docker pull ghcr.io/huggingface/text-generation-inference:latest
 ````
 
+Export your Huggingface Token:
+```bash
+export HF_TOKEN=<your HF token>
+````
+
 ---
 
 ## 🚀 Usage
