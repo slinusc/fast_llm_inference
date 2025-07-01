@@ -1,5 +1,6 @@
 # Core dependencies
-rich
+rich>=13.5.2
+sentencepiece
 openai
 torch
 transformers
