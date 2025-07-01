@@ -1,0 +1,37 @@
+experiment_name: RQ2
+
+# ───────────────────────────────────
+#  MODEL / BACKEND MATRIX
+# ───────────────────────────────────
+backend:         [vllm, sglang, lmdeploy, tgi]
+
+hf_model:
+  #- mistralai/Mistral-7B-Instruct-v0.3
+  #- Qwen/Qwen2.5-3B-Instruct
+  #- Qwen/Qwen2.5-7B-Instruct
+  - meta-llama/Llama-3.1-8B-Instruct
+
+# ───────────────────────────────────
+#  EXPERIMENT SPACE
+# ───────────────────────────────────
+task:       [summarization, sql, qa]
+scenario:   [single, batch, server]
+
+# ----------------
+# shared defaults
+# ----------------
+samples:          256           # used in single & batch
+sample_interval:  0.1
+quality_metric:   true
+
+# ----------------
+# batch-scenario specific
+# ----------------
+batch_size: [16, 32, 64, 128] 
+
+# ----------------
+# server-scenario specific
+# ----------------
+run_time: 300 # seconds
+concurrent_users: [8, 16, 32, 64]
+requests_per_user_per_min: 12
