@@ -57,10 +57,10 @@ pip install -r requirements.txt
 Pull all official backend docker images:
 
 ```bash
-docker pull lmsysorg/sglang:latest \
-             openmmlab/lmdeploy:latest \
-             vllm/vllm-openai:latest \
-             ghcr.io/huggingface/text-generation-inference:latest
+docker pull lmsysorg/sglang:latest
+docker pull openmmlab/lmdeploy:latest
+docker pull vllm/vllm-openai:latest
+docker pull ghcr.io/huggingface/text-generation-inference:latest
 ````
 
 > Optional system dependencies:
