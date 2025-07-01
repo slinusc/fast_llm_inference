@@ -1,28 +1,23 @@
 import re, string
-import transformers
 from typing import Dict
 from collections import deque
 import threading
 from threading import Thread
+from math import floor
 
-# Cache tokenizers so repeated calls with the same model_name don’t reload each time
-_tokenizer_cache: Dict[str, transformers.PreTrainedTokenizerFast] = {}
 
-def tok_cnt(text: str, model_name: str) -> int:
+def tok_cnt(text: str, inflation: float = 1.2) -> int:
     """
-    Returns the number of tokens in `text` according to the tokenizer
-    for the given `model_name`. Tokenization always runs on CPU.
-    """
-    # Load (or retrieve from cache) the tokenizer for this model
-    if model_name not in _tokenizer_cache:
-        _tokenizer_cache[model_name] = transformers.AutoTokenizer.from_pretrained(
-            model_name, use_fast=True
-        )
-    tokenizer = _tokenizer_cache[model_name]
+    Approximate token count using whitespace-based word splitting,
+    scaled by a token inflation factor (default 1.2).
 
-    # Tokenize without adding special tokens and return length
-    encoded = tokenizer(text, add_special_tokens=False)
-    return len(encoded["input_ids"])
+    Returns at least 1.
+    """
+    if not text.strip():
+        return 1
+    word_count = len([tok for tok in text.split() if tok])
+    token_estimate = floor(word_count * inflation)
+    return max(token_estimate, 1)
 
 
 # ── Sentence/Statement Counters ──
