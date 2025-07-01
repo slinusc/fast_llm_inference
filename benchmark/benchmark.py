@@ -692,7 +692,7 @@ class ModelBenchmark:
 
         for rec in intermediate_records:
             generated = clean_prediction([rec["generated_raw"]])[0]
-            nt = tok_cnt(generated, self.model_path)     # number of tokens generated
+            nt = tok_cnt(generated)     # number of tokens generated
             ns = sent_cnt(generated, mode = scenario)    # number of sentences generated
             gen_time = rec["generation_time"]
 

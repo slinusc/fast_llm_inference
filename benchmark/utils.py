@@ -6,7 +6,7 @@ from threading import Thread
 from math import floor
 
 
-def tok_cnt(text: str, inflation: float = 1.2) -> int:
+def tok_cnt(text: str) -> int:
     """
     Approximate token count using whitespace-based word splitting,
     scaled by a token inflation factor (default 1.2).
@@ -16,7 +16,7 @@ def tok_cnt(text: str, inflation: float = 1.2) -> int:
     if not text.strip():
         return 1
     word_count = len([tok for tok in text.split() if tok])
-    token_estimate = floor(word_count * inflation)
+    token_estimate = floor(word_count * 1.2)
     return max(token_estimate, 1)
 
 
