@@ -63,11 +63,13 @@ docker pull vllm/vllm-openai:latest
 docker pull ghcr.io/huggingface/text-generation-inference:latest
 ````
 
-> Optional system dependencies:
->
-> ```bash
-> sudo apt install libssl-dev libcurl4 build-essential libllvm15
-> ```
+> System dependencies:
+```bash
+sudo apt update
+sudo apt install -y libssl-dev libcurl4 build-essential libllvm15
+sudo apt install -y nvidia-container-toolkit
+sudo systemctl restart docker
+```
 
 ---
 
