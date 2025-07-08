@@ -156,6 +156,7 @@ case "$ENGINE" in
     #       --model-path mistralai/Mistral-7B-Instruct-v0.3 \
     #       --host 0.0.0.0 \
     #       --port 23333 \
+    #       --context-length 4096
     #   "
     # ────────────────────────────────────────────────────────────────────────
     docker run --rm \
@@ -163,6 +164,7 @@ case "$ENGINE" in
       -p 127.0.0.1:${PORT}:${PORT} \
       -v ~/.cache/huggingface:/root/.cache/huggingface \
       --ipc=host \
+      -e HUGGING_FACE_HUB_TOKEN=$HF_TOKEN \
       lmsysorg/sglang:latest \
       bash -c "\
         pip install --no-cache-dir protobuf sentencepiece --break-system-packages && \
@@ -170,7 +172,7 @@ case "$ENGINE" in
           --model-path $MODEL \
           --host 0.0.0.0 \
           --port $PORT \
-      "
+        "
     ;;
 
   mii)
